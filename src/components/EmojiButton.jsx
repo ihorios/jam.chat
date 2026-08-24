@@ -94,8 +94,13 @@ export default function EmojiButton({ onPick, disabled = false, title }) {
               emojiVersion={EMOJI_VERSION}
               theme="dark"
               lazyLoadEmojis
-              width={320}
-              height={400}
+              /* Deliberately not a pixel size. The library turns these into
+                 an inline style on its own root, so a number here would be
+                 unbeatable from CSS without !important — and the panel has to
+                 be one width on a desktop and another on a phone. Handing it
+                 100% makes .emoji-popover the single place that decides. */
+              width="100%"
+              height="100%"
               previewConfig={{ showPreview: false }}
               searchPlaceholder={t('emoji.search')}
             />

@@ -1,0 +1,26 @@
+<svg width="96" height="96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="iconTitle">
+  <title id="iconTitle">JAM.chat</title>
+  <defs>
+    <!--
+      The tile from the lockup (public/logo-lockup.png), drawn to the same
+      numbers: 96 square, radius 26, the project accent sweep across it.
+      The gradient runs at the lockup's 100deg — right and slightly down.
+    -->
+    <linearGradient id="iconGrad" gradientUnits="userSpaceOnUse" x1="0" y1="40" x2="96" y2="57">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="96" height="96" rx="26" fill="url(#iconGrad)"/>
+
+  <!--
+    The bubble is punched through the tile in bg-dark rather than set in white,
+    so the mark reads as one shape at 16px instead of three tones. Drawn in its
+    own 100x90 space and placed by transform, which keeps the path identical to
+    the one the lockup export uses.
+  -->
+  <g transform="translate(22 22.1) scale(0.52)" fill="#0f172a">
+    <path d="M18 0 H82 A18 18 0 0 1 100 18 V54 A18 18 0 0 1 82 72 H50 L22 90 L28 72 H18 A18 18 0 0 1 0 54 V18 A18 18 0 0 1 18 0 Z"/>
+  </g>
+</svg>

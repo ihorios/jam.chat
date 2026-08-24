@@ -1,0 +1,43 @@
+<svg width="827" height="332" viewBox="186 176 827 332" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="logoTitle">
+  <title id="logoTitle">JAM.chat</title>
+  <defs>
+    <!--
+      Project accent sweep: accent-cyan to accent-purple (src/index.css).
+      userSpaceOnUse, not the default objectBoundingBox: the J, A and M are three
+      separate paths, so a bounding-box gradient would restart on each letter
+      instead of running once across the whole wordmark.
+    -->
+    <linearGradient id="jamGrad" gradientUnits="userSpaceOnUse" x1="266" y1="226" x2="953" y2="458">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <!-- soft, low-contrast drop shadow shared by every mark -->
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="5" dy="7" stdDeviation="4" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- transparent background: content is cropped to a 50px margin -->
+
+  <!--
+    JAM wordmark: bold rounded strokes, wider M.
+    Cap height squashed to 78% of the original, anchored on the baseline (y=428)
+    so the letters shorten downward from the top and the wordmark reads wider.
+    Widths and stroke weight are untouched.
+  -->
+  <g fill="none" stroke="url(#jamGrad)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" filter="url(#softShadow)">
+    <path d="M347,256 L347,385 Q347,428 266,428"/>
+    <path d="M446,428 L545,256 L644,428"/>
+    <path d="M743,428 L743,256 L833,369 L923,256 L923,428"/>
+  </g>
+
+  <!-- speech-bubble mark nested in the A's counter, sitting low where the counter is widest -->
+  <g fill="#FFFFFF" filter="url(#softShadow)">
+    <rect x="491" y="334" width="108" height="79" rx="22"/>
+    <path d="M507,413 L491,442 L532,413 Z"/>
+  </g>
+
+  <!-- .chat suffix: raised, overlapping the M -->
+  <text x="730" y="430" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="92" fill="#FFFFFF" filter="url(#softShadow)">.chat</text>
+
+</svg>

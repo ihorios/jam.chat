@@ -1,0 +1,2411 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+
+/*
+  The icon set. Material Symbols is a font: an icon is its own name written as a
+  ligature, so `<span class="icon">edit</span>` draws a pencil (components/Icon.jsx).
+
+  Served from here rather than from Google, for one reason that matters: until
+  the font arrives, a ligature is still ordinary text, so a page loading it over
+  the network shows the words "space_dashboard" and "rocket_launch" where its
+  icons belong. Same-origin and 33KB, it is there for the first paint.
+
+  The file holds only the icons this app names — see docs/icons/README.md, which
+  is also where to look when a new icon renders as its own name.
+
+  `font-display: block` is the second half of that: if the file is somehow slow,
+  the browser draws nothing rather than the name.
+*/
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url('/fonts/material-symbols-rounded-subset.woff2') format('woff2');
+}
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Fira Code', monospace;
+  --font-icons: 'Material Symbols Rounded';
+
+  /* Colors */
+  --bg-dark: #0f172a;
+  --bg-card: rgba(30, 41, 59, 0.7);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-highlight: rgba(99, 102, 241, 0.4);
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  --accent-cyan: #38bdf8;
+  --accent-purple: #818cf8;
+  --accent-emerald: #34d399;
+
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Icons ─────────────────────────────────────────────────────────────────
+   One rule for every icon in the app (see components/Icon.jsx). Sized in `em`
+   so an icon follows the text it sits beside rather than needing a size at each
+   use, and `line-height: 1` so it does not stretch the line it is on.
+
+   `font-variation-settings` rather than font-weight: on a variable icon font the
+   weight axis is one of several, and setting it this way keeps FILL — the
+   difference between an outlined and a solid icon — in the same place. */
+.icon {
+  font-family: var(--font-icons);
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.25em;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  /* The ligature is only drawn once the font arrives; until then the name
+     itself would be visible as text. */
+  font-feature-settings: 'liga';
+}
+
+/* Solid rather than outlined, for the few places an icon carries the weight of
+   a heading or a state rather than labelling a control. */
+.icon.filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* An icon standing in for a heading's emoji: bigger, and optically aligned with
+   the text beside it rather than sitting on the baseline. */
+.icon.heading-icon {
+  font-size: 1.1em;
+  color: var(--accent-cyan);
+  transform: translateY(0.06em);
+}
+
+/* Anything that is a label with an icon in front of it: a row, so the two are
+   centred on each other rather than sitting on a text baseline the icon does
+   not share. */
+.nav-link,
+.tab-btn,
+.btn-action,
+.btn,
+.bubble-reply,
+.composer-reply span,
+.reply-context,
+.attachment,
+.attachment-chip,
+.error-banner,
+.pw-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Two of those are block-level in their own right and must stay full width. */
+.error-banner,
+.bubble-reply,
+.reply-context { display: flex; }
+
+.btn,
+.btn-action { justify-content: center; }
+
+/* Big, quiet, and centred: the icon *is* the empty state, so it carries none of
+   an accent colour's urgency. */
+.empty-icon {
+  font-size: 3.5rem;
+  color: var(--text-dim);
+}
+
+/* The magnifying glass belongs inside the field, which leaves the placeholder
+   to say what is being searched. */
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 240px;
+}
+
+.search-field .icon {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.search-field .search-input {
+  flex: 1;
+  min-width: 0;
+  padding-left: 2.6rem;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  min-height: 100vh;
+  line-height: 1.6;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(129, 140, 248, 0.12) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.logo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: var(--accent-cyan);
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+.react-icon {
+  animation: spin 12s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.title {
+  font-size: 2.75rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.title .icon {
+  display: inline-block;
+  -webkit-text-fill-color: initial;
+  color: initial;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 1.125rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Cards */
+.card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  margin-bottom: 2rem;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--border-highlight);
+}
+
+.card-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Interactive Playground */
+.playground-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.demo-box {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.demo-box h4 {
+  font-size: 1rem;
+  color: var(--accent-purple);
+  font-weight: 600;
+}
+
+.input-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.input-field:focus {
+  border-color: var(--accent-cyan);
+}
+
+.btn {
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  color: #0f172a;
+  border: none;
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+}
+
+.counter-value {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: var(--accent-emerald);
+  text-align: center;
+}
+
+/* Concept Cards */
+.concept-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.25rem;
+}
+
+.concept-card {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+}
+
+.concept-icon {
+  font-size: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.concept-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  margin-bottom: 0.5rem;
+}
+
+.concept-desc {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Code Viewer */
+.code-block {
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+}
+
+.code-keyword { color: #f472b6; font-weight: 600; }
+.code-func { color: #38bdf8; }
+.code-string { color: #34d399; }
+.code-comment { color: #64748b; font-style: italic; }
+.code-tag { color: #818cf8; }
+.code-attr { color: #fbbf24; }
+
+.tab-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.tab-btn {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn.active {
+  background: var(--accent-purple);
+  color: #ffffff;
+  border-color: var(--accent-purple);
+}
+
+.badge {
+  display: inline-block;
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--accent-emerald);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-weight: 700;
+  margin-left: 0.5rem;
+}
+
+.footer {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  padding: 2rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 3rem;
+}
+
+/* Navbar */
+.navbar-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* Wordmark above, tagline under it — so the brand is a stacked block rather
+   than the mark-beside-name row it used to be. */
+.brand-logo {
+  color: var(--text-main);
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+/* The lockup carries an icon tile, so its letters sit lower than the old
+   all-type wordmark did — 36px of height matches the previous optical size. */
+.brand-wordmark {
+  display: block;
+  height: 36px;
+  width: auto;
+}
+
+.brand-tagline {
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+
+/* Profile */
+.profile-card {
+  max-width: 640px;
+}
+
+.profile-form {
+  margin-top: 1.5rem;
+  text-align: left;
+}
+
+.profile-form select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+}
+
+.profile-form select option {
+  background: var(--bg-dark);
+  color: var(--text-main);
+}
+
+.profile-form input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.field-hint {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.profile-saved {
+  color: var(--accent-emerald);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 1rem;
+}
+
+.nav-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.nav-link:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-link.active {
+  color: var(--text-main);
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+/* Page & Layout */
+.main-content {
+  min-height: calc(100vh - 150px);
+  padding: 2rem 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-container, .admin-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.admin-header h2 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+/* Metrics Row */
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.metric-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.metric-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--accent-cyan);
+}
+
+.metric-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Status Badges */
+.status-badge-container {
+  margin: 1.5rem 0;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.status-online {
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  color: var(--accent-emerald);
+}
+
+.status-offline {
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #f87171;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Filters Bar */
+.filters-bar {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* The footer of a list: what is shown, how much to show, and the way to the
+   rest. Wraps rather than shrinks, so the count and the controls stay legible
+   on a narrow window instead of squeezing into each other. */
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 0.25rem 0;
+  border-top: 1px solid var(--border-color);
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Takes the slack, so the size picker and the arrows sit together on the
+   right — the same arrangement as the messenger's sidebar header. */
+.pagination-count { margin-right: auto; }
+
+.pagination-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.pagination-size .role-select {
+  min-width: 0;
+  width: auto;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.pagination-pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pagination-pages .btn-action {
+  padding: 0.3rem 0.45rem;
+  line-height: 1;
+}
+
+.pagination-pages .btn-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pagination-position {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 240px;
+  padding: 0.75rem 1rem;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: var(--accent-cyan);
+}
+
+.role-select {
+  padding: 0.75rem 1rem;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+/* Users Table */
+.table-responsive {
+  overflow-x: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(12px);
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.925rem;
+}
+
+.users-table th {
+  background: rgba(15, 23, 42, 0.8);
+  padding: 1rem 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.users-table td {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: middle;
+}
+
+.users-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Name and address beside the face rather than under it: the row is already
+   the widest thing on the page. */
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+/* The avatar wherever a person is listed or edited rather than spoken to. */
+.user-avatar,
+.profile-avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--bg-dark);
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+}
+
+.user-avatar {
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 0.8rem;
+}
+
+.profile-avatar {
+  width: 3rem;
+  height: 3rem;
+  font-size: 0.95rem;
+}
+
+/* ── Picture field ─────────────────────────────────────────────────────────
+   The current picture, and the two things to do with it (components/
+   PictureField.jsx). */
+.picture-field-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.picture-preview {
+  flex-shrink: 0;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--bg-dark);
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+}
+
+.picture-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* The file input does the work and the button beside it does the asking: a
+   file input cannot be styled to belong here, and it must stay reachable
+   rather than be display:none, which would take it out of the tab order and
+   away from a screen reader. */
+.picture-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.picture-error {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #f87171;
+}
+
+/* Amber rather than red: an unproven address is something to get round to,
+   not a fault. */
+.unconfirmed-badge {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+}
+
+.user-name {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.user-email {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.825rem;
+  color: var(--text-muted);
+}
+
+.role-pill {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.role-admin {
+  background: rgba(129, 140, 248, 0.2);
+  color: var(--accent-purple);
+  border: 1px solid rgba(129, 140, 248, 0.4);
+}
+
+.role-user {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.role-editor {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.permissions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.perm-tag {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-pill.active {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--accent-emerald);
+}
+
+.status-pill.inactive {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+}
+
+.actions-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-action {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-action.edit:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--accent-cyan);
+}
+
+.btn-action.delete:hover {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: #f87171;
+  color: #f87171;
+}
+
+.empty-state, .loading-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-muted);
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #1e293b;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 520px;
+  /* The overlay is a fixed, centred flex box, so a form taller than the window
+     used to overflow it in both directions — with the save button somewhere
+     off-screen and nothing to scroll to reach it. 3rem is the overlay's own
+     padding, top and bottom. */
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  padding: 1.75rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-error {
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #f87171;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+/* A confirmation is one question and two answers, so it is narrower than the
+   forms that share these classes — a sentence stretched to 520px reads as a
+   paragraph somebody has to study rather than a question to answer. */
+.confirm-dialog {
+  max-width: 26rem;
+  gap: 0.75rem;
+}
+
+.confirm-body {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* The button that cannot be walked back. Red from the start rather than on
+   hover: it has to look different from the one beside it before it is pointed
+   at, because which is which is the whole decision. */
+.btn-danger {
+  background: rgba(248, 113, 113, 0.16);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  color: #fca5a5;
+}
+
+.btn-danger:hover {
+  background: rgba(248, 113, 113, 0.28);
+  border-color: #f87171;
+  color: #fecaca;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"],
+.form-group input[type="url"],
+.form-group select {
+  /* An input carries an intrinsic width of roughly 20 characters. Without
+     these it sizes to that instead of to its container, and pushes out of
+     narrow layouts like the login card. */
+  width: 100%;
+  min-width: 0;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.form-row {
+  display: grid;
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track refuses to shrink below its
+     content's min-content width, so two inputs overflowed their parent rather
+     than sharing the row. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: center;
+}
+
+/* Below this the two columns cannot hold a usable input, so stack them. */
+@media (max-width: 30rem) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Grid and flex children default to min-width:auto; without this the same
+   overflow reappears wherever a form group sits in a sized track. */
+.form-row > .form-group {
+  min-width: 0;
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.permissions-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.checkbox-label code {
+  color: var(--accent-cyan);
+  font-size: 0.75rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+
+/* ── Roles & permissions admin ─────────────────────────────────────────── */
+
+/* Fallback so user-defined roles still render as a pill. :where() keeps this at
+   zero specificity, so the .role-admin / .role-user / .role-editor colours
+   defined above still win for the roles that have one. */
+:where(.role-pill) {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.no-perm {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.loading-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.error-banner {
+  padding: 1rem;
+  border-radius: var(--radius-sm);
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+}
+
+/* Permissions a user inherits from roles — read-only, so visually quieter. */
+.perm-tag.derived {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.25);
+  color: var(--accent-emerald);
+}
+
+/* Read-only, and as long as the catalogue: an administrator's effective
+   permissions are forty-odd tags, which pushed the buttons of the form off the
+   bottom of the screen. Capped and scrolled in place instead, so the box takes
+   the same room whoever is being edited. */
+.derived-box {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  /* One fixed height, not a range: the form must not change shape between an
+     administrator holding the whole catalogue and an account holding nothing.
+     Three rows or so — enough to read as a list, small enough that the buttons
+     of the form stay in view. */
+  height: 5.5rem;
+  overflow-y: auto;
+}
+
+.system-badge {
+  margin-left: 0.5rem;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+}
+
+.modal-note {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+/* One row per registered model, one checkbox per CRUD action. */
+.permission-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.matrix-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.matrix-row:last-child {
+  border-bottom: none;
+}
+
+.matrix-model {
+  min-width: 10rem;
+}
+
+.matrix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.matrix-actions .checkbox-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── Messages ──────────────────────────────────────────────────────────── */
+
+/* Message bodies are free text: wrap them and keep one from taking the table
+   over, but leave the author's line breaks alone. */
+.message-body {
+  max-width: 32rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reply-context {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.reply-quote {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+/* Captions the scope a row of action checkboxes applies to. */
+.scope-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  opacity: 0.7;
+  min-width: 7rem;
+}
+
+/* ── Login ─────────────────────────────────────────────────────────────── */
+
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 3rem 1rem;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 26rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  backdrop-filter: blur(12px);
+}
+
+/* The card's header is the lockup and nothing else, centred as a block —
+   line-height: 0 so the image's inline box adds no space under it. */
+.login-header {
+  display: flex;
+  justify-content: center;
+  line-height: 0;
+  margin-bottom: 1.5rem;
+}
+
+/* Google's own button, centred. Its interior is Google's and not ours to
+   restyle, so this only places it. */
+.google-signin {
+  display: flex;
+  justify-content: center;
+}
+
+.google-signin[aria-busy='true'] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.login-wordmark {
+  display: block;
+  width: min(280px, 85%);
+  height: auto;
+}
+
+.btn-block {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+/* ── Dashboard ─────────────────────────────────────────────────────────── */
+
+/* Metrics on the left, the primary action pinned right. */
+.panel-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.panel-toolbar .metrics-row {
+  flex: 1 1 20rem;
+  margin: 0;
+}
+
+.empty-dashboard {
+  padding: 3rem 1rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Page headings that lead with the logo mark. */
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* The mark is optically centred on the cap height, not the full line box. */
+.brand-logo svg,
+.page-title svg {
+  flex: none;
+  display: block;
+}
+
+/*
+  Narrow screens: the header runs out of room before anything else does. The
+  links keep their icons and drop their labels — the icon is the recognisable
+  half, and each link carries its name as a title for anyone who needs it —
+  while the brand keeps the mark and drops the tagline.
+*/
+@media (max-width: 34rem) {
+  .navbar-container { padding: 0.75rem 1rem; }
+  .brand-tagline { display: none; }
+  .brand-wordmark { width: min(160px, 40vw); }
+  .navbar-links { gap: 0.35rem; }
+  .nav-link { padding: 0.5rem 0.6rem; }
+  .nav-link .nav-link-label { display: none; }
+  .user-menu { padding-left: 0.35rem; }
+}
+
+/* ── Account menu ──────────────────────────────────────────────────────────
+   The three-line button in the header and the menu it opens (components/
+   UserMenu.jsx). Positioned by its own wrapper rather than by the header, so
+   the surface hangs from the button wherever the header puts it. */
+.user-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--border-color);
+}
+
+.user-menu-trigger {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  /* A round target the size of a fingertip, which is what a menu button in a
+     header has to be on a phone. */
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.user-menu-trigger:hover,
+.user-menu-trigger.open {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+/* Keyboard focus is visible; a mouse click is not ringed. */
+.user-menu-trigger:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.user-menu-trigger .icon { font-size: 1.5rem; }
+
+/*
+  The menu surface: anchored under the button and to its right edge, raised off
+  the page by a shadow rather than a border, and never wider than the viewport.
+
+  `transform-origin: top right` is what makes it read as opening *from* the
+  button rather than simply appearing.
+*/
+.user-menu-surface {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 200;
+  min-width: 15rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.5rem 0;
+  background: #1b2438;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  transform-origin: top right;
+  animation: menu-open 0.14s ease-out;
+}
+
+@keyframes menu-open {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-menu-surface { animation: none; }
+}
+
+/* Who the session belongs to. Not a menu item: nothing here to choose. */
+.user-menu-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 1rem 0.75rem;
+}
+
+.user-menu-identity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.user-menu-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+/* An address is longer than the menu on a phone; it truncates rather than
+   stretching the surface off the screen. */
+.user-menu-email {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-divider {
+  height: 1px;
+  margin: 0 0 0.5rem;
+  background: var(--border-color);
+}
+
+/* One row per action: full width, icon then label, 2.75rem tall — a target you
+   cannot miss with a thumb. */
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.user-menu-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* Focus is a filled row rather than an outline: inside a menu, "where I am" is
+   the whole row, exactly as hover reads. */
+.user-menu-item:focus-visible {
+  outline: none;
+  background: rgba(56, 189, 248, 0.16);
+  box-shadow: inset 3px 0 0 var(--accent-cyan);
+}
+
+.user-menu-item .icon {
+  font-size: 1.25rem;
+  color: var(--text-muted);
+}
+
+/* The generic panel renders textareas for text/json fields. */
+.form-group textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--border-highlight);
+}
+
+/* ── Sign in / register ────────────────────────────────────────────────── */
+
+.auth-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 1.25rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.auth-tab {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-tab:hover { color: var(--text-main); }
+
+.auth-tab.active {
+  background: rgba(129, 140, 248, 0.18);
+  color: var(--accent-purple);
+}
+
+.auth-tab:focus-visible {
+  outline: 2px solid var(--accent-purple);
+  outline-offset: -2px;
+}
+
+.optional {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* Live password requirements. Unmet rules stay muted rather than red — nothing
+   is wrong yet, the password is simply not finished. */
+.pw-rules {
+  list-style: none;
+  margin: -0.35rem 0 1rem;
+  padding: 0.65rem 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.3rem 0.9rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.pw-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.pw-rule span {
+  width: 0.9rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+.pw-rule.met { color: var(--accent-emerald); }
+
+/* ── Messenger ─────────────────────────────────────────────────────────── */
+
+/* Two panes side by side, filling what the navbar and footer leave behind
+   rather than growing the page — the conversation scrolls, not the window. */
+.messenger {
+  display: flex;
+  gap: 1rem;
+  height: calc(100vh - 13rem);
+  min-height: 24rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.messenger-sidebar {
+  width: 20rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.messenger-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* The title takes the slack, so the state and the action sit together on the
+   right rather than being spread across the width one by one. */
+.messenger-sidebar-header h2 {
+  margin-right: auto;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+/* Starting a conversation: an icon, because it sits in a header that is
+   already carrying a title, a connection state and a count. */
+.btn-new-chat {
+  flex-shrink: 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  line-height: 1;
+  background: rgba(99, 102, 241, 0.18);
+  border: 1px solid var(--border-highlight);
+  color: var(--text-main);
+}
+
+/* Group trouble — a failed invite, a leave that did not go through. Sits under
+   the sidebar header because it is about the list, not about a message. */
+.sidebar-error {
+  margin: 0.75rem 1rem 0;
+}
+
+.messenger-sidebar-empty {
+  padding: 1.25rem 1rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.chat-list {
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.chat-item {
+  width: 100%;
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.7rem 1rem;
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-item:hover { background: rgba(255, 255, 255, 0.04); }
+
+.chat-item.active {
+  background: rgba(99, 102, 241, 0.12);
+  border-left-color: var(--accent-purple);
+}
+
+.chat-avatar {
+  flex-shrink: 0;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--bg-dark);
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+}
+
+/* The picture variant of any avatar: same circle, filled by the image rather
+   than by the gradient behind it. */
+.avatar-image {
+  object-fit: cover;
+  background: var(--bg-dark);
+}
+
+.chat-item-body { min-width: 0; flex: 1; }
+
+.chat-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.chat-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-time {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.chat-preview {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.messenger-thread {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.thread-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.2rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.thread-header h3 { font-size: 1rem; }
+
+.thread-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* Invite, leave, call. Wrapping rather than shrinking: three labelled buttons
+   do not fit beside a title on a narrow thread, and a squashed one is worse
+   than one on its own line. */
+.thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.btn-invite,
+.btn-leave {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.btn-invite {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid var(--border-highlight);
+  color: var(--text-main);
+}
+
+/* Quieter than the other two until it is pointed at: leaving is the one action
+   here that cannot be undone from this screen. */
+.btn-leave {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.btn-leave:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+/* Ending the conversation for everybody, rather than stepping out of it. Wears
+   the warning from the start instead of only on hover: it is the one button
+   here that destroys something other people can see. */
+.btn-leave.delete {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #f87171;
+}
+
+.btn-leave.delete:hover {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+/* Something the application says about the conversation rather than in it: it
+   is centred and unadorned, so it reads as a change of state and not as
+   somebody's remark. */
+.thread-notice {
+  align-self: center;
+  max-width: min(90%, 34rem);
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  padding: 0.15rem 0;
+}
+
+.thread-notice time { opacity: 0.7; }
+
+
+.thread-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.bubble-row.mine { justify-content: flex-end; }
+
+/* Smaller than the sidebar's: it sits beside a line of text, not a two-line
+   summary. Bottom-aligned, so a long message keeps it next to the newest line. */
+.bubble-avatar {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--bg-dark);
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+}
+
+.bubble {
+  max-width: min(80%, 34rem);
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid var(--border-color);
+}
+
+.bubble-row.mine .bubble {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: var(--border-highlight);
+}
+
+.bubble-author {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  margin-bottom: 0.15rem;
+}
+
+.bubble-reply {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  border-left: 2px solid var(--border-highlight);
+  padding-left: 0.45rem;
+  margin-bottom: 0.3rem;
+}
+
+.bubble-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+.bubble-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+/* Row actions stay quiet until the message is pointed at. */
+.bubble-meta button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.bubble:hover .bubble-meta button,
+.bubble-meta button:focus-visible { opacity: 1; }
+.bubble-meta button:hover { color: var(--accent-cyan); }
+
+.composer {
+  border-top: 1px solid var(--border-color);
+  padding: 0.7rem 1rem;
+}
+
+.composer-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.composer-row textarea {
+  flex: 1;
+  /* The height is set from the content by MessengerPage's resizeComposer, so
+     the drag handle would be fighting it. max-height is where the growing
+     stops: past that the field scrolls instead of pushing the conversation
+     off the screen. */
+  resize: none;
+  overflow-y: auto;
+  min-height: 2.6rem;
+  max-height: 8rem;
+  padding: 0.6rem 0.8rem;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--text-main);
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.composer-row textarea:focus {
+  outline: none;
+  border-color: var(--border-highlight);
+}
+
+.composer-reply {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 0.3rem 0.1rem 0.5rem;
+}
+
+.composer-reply button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.composer-readonly {
+  border-top: 1px solid var(--border-color);
+  padding: 0.9rem 1rem;
+  font-size: 0.85rem;
+}
+
+.messenger-empty {
+  margin: auto;
+  text-align: center;
+  padding: 2rem;
+}
+
+.messenger-empty h2 { font-size: 1.4rem; }
+.messenger-empty.standalone { max-width: 32rem; }
+
+@media (max-width: 780px) {
+  .messenger {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .messenger-sidebar {
+    width: 100%;
+    max-height: 16rem;
+  }
+
+  .messenger-thread { min-height: 26rem; }
+}
+
+/* ── Calls ──────────────────────────────────────────────────────────────
+   A call is not a page: the popup arrives over whatever is on screen, and
+   the panel docks in a corner so the conversation it came from stays
+   readable underneath. */
+
+.btn-call {
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  color: var(--accent-emerald);
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.btn-call:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.call-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4rem 1rem 1rem;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.call-popup-card {
+  width: min(24rem, 100%);
+  background: var(--bg-dark);
+  border: 1px solid var(--border-highlight);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.call-popup-card h3 { font-size: 1.15rem; }
+
+.call-avatar {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  color: var(--bg-dark);
+  font-weight: 800;
+  flex: none;
+}
+
+.call-avatar.small {
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.75rem;
+}
+
+/* An unanswered call should look like one. */
+.call-avatar.ringing { animation: call-pulse 1.4s ease-in-out infinite; }
+
+@keyframes call-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+  50% { box-shadow: 0 0 0 0.75rem rgba(52, 211, 153, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .call-avatar.ringing { animation: none; }
+}
+
+.call-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.call-answer {
+  background: var(--accent-emerald);
+  color: #06281c;
+  font-weight: 700;
+}
+
+.call-hangup {
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #f87171;
+}
+
+.call-mic {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+.call-mic.off { color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); }
+
+.call-panel {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 1100;
+  width: min(20rem, calc(100vw - 2.5rem));
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.call-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.call-panel-header h4 { font-size: 0.95rem; }
+.call-panel-header .subtitle { font-size: 0.75rem; margin: 0; }
+
+/* The dot says what the connection is doing without a sentence about it. */
+.call-state.ringing { background: #fbbf24; }
+.call-state.connecting { background: var(--accent-cyan); }
+.call-state.talking { background: var(--accent-emerald); }
+
+.call-peers {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.call-peer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.call-peer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-peer-state {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.call-peer.waiting {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.call-error {
+  color: #f87171;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 480px) {
+  .call-panel {
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+  }
+}
+
+/* ── Attachments ────────────────────────────────────────────────────────
+   Files on a message, and files about to be on one. Every link points at
+   /api/files/:id/content — never at the bucket, because who may read an
+   attachment is decided by the group it was sent to. */
+
+.attachments {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+
+.attachment:hover {
+  border-color: var(--border-highlight);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.attachment-icon { flex: none; }
+
+.attachment-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-size {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.attachment-drafts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.1rem 0.1rem 0.5rem;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 16rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  background: var(--bg-card);
+  font-size: 0.75rem;
+}
+
+.attachment-chip.pending {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.attachment-chip button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.attachment-chip button:hover { color: #f87171; }
+
+.btn-attach {
+  flex: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 1.1rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.btn-attach:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* An edit in progress, and a message that has been through one. */
+.composer-reply.editing { color: var(--accent-cyan); }
+
+.bubble-edited {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* ── Emoji ──────────────────────────────────────────────────────────────
+   The picker is a menu hung off its button, not a panel: it opens over the
+   conversation and closes on a click elsewhere or Escape. */
+
+.emoji-anchor {
+  position: relative;
+  flex: none;
+}
+
+.btn-emoji {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 1.1rem;
+  padding: 0.5rem 0.7rem;
+  line-height: 1;
+}
+
+.btn-emoji:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.emoji-popover {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 1000;
+  border-radius: var(--radius-md);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  /* The picker paints its own surface; this only stops the corners showing
+     through it. */
+  overflow: hidden;
+}
+
+/* The library sizes its own grid from these, and its defaults are built for a
+   panel rather than for a corner of a composer: 30px glyphs in 40px cells, which
+   next to 0.9rem message text read as a wall of stickers. Two-class selector
+   because the library declares them on .EmojiPickerReact itself. */
+.emoji-popover .EmojiPickerReact {
+  --epr-emoji-size: 22px;
+  --epr-emoji-padding: 4px;
+  --epr-search-input-height: 34px;
+  --epr-header-padding: 8px 10px;
+  --epr-category-label-height: 26px;
+}
+
+.emoji-loading {
+  width: 20rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+}
+
+/* An emoji sent on its own is the message, not decoration on one. */
+.bubble-text.jumbo {
+  font-size: 2.5rem;
+  line-height: 1.15;
+}
+
+@media (max-width: 480px) {
+  .emoji-popover {
+    left: auto;
+    right: 0;
+  }
+}

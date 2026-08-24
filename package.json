@@ -1,0 +1,48 @@
+{
+  "name": "chatty",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "start": "node server/index.js",
+    "server": "node server/index.js",
+    "lint": "oxlint",
+    "test": "node test/run.js",
+    "preview": "vite preview",
+    "up": "vite build && node server/index.js"
+  },
+  "//": "vite and @vitejs/plugin-react are dependencies rather than devDependencies on purpose. The deploy builds with `npm install && npm run build` under NODE_ENV=production, and npm omits devDependencies when that is set — leaving the build with no Vite to run. Anything else needed to BUILD the client belongs here too; test and lint tooling does not.",
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/multipart": "^10.1.0",
+    "@fastify/static": "^10.1.3",
+    "@fastify/websocket": "^11.3.0",
+    "@react-oauth/google": "^0.13.5",
+    "@vitejs/plugin-react": "^6.0.4",
+    "aws4fetch": "^1.0.20",
+    "bcryptjs": "^3.0.3",
+    "emoji-picker-react": "^4.19.1",
+    "fastify": "^5.11.3",
+    "fastify-plugin": "^6.0.0",
+    "i18next": "^26.3.6",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "jose": "^6.2.9",
+    "jwt-decode": "^4.0.0",
+    "pg": "^8.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-i18next": "^17.0.11",
+    "react-router-dom": "^7.18.2",
+    "vite": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "oxlint": "^1.75.0",
+    "tap": "^21.7.5",
+    "ws": "^8.21.3"
+  }
+}

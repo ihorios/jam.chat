@@ -47,6 +47,22 @@
   --radius-sm: 8px;
 }
 
+/* ── The mobile breakpoint ─────────────────────────────────────────────────
+   768px, desktop-first, declared once here and referenced everywhere else as
+   `@media (--mobile)`. It is the only breakpoint in this file: the app has
+   exactly two layouts — stacked and side-by-side — and a width that compacted
+   the navbar but not the messenger only ever produced bugs.
+
+   `@custom-media` is Media Queries Level 5 and no browser implements it yet;
+   Lightning CSS inlines it at build time (see the `css` block in
+   vite.config.js, which also explains why the `targets` option there is load-
+   bearing). A custom property could not do this job — media queries are
+   resolved before custom properties, so `(max-width: var(--x))` never matches.
+
+   768 includes iPad portrait (exactly 768px wide) in the mobile layout. That
+   is deliberate; use 767.98px if a tablet should get the desktop one. */
+@custom-media --mobile (max-width: 768px);
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -1087,7 +1103,7 @@ body {
 }
 
 /* Below this the two columns cannot hold a usable input, so stack them. */
-@media (max-width: 30rem) {
+@media (--mobile) {
   .form-row {
     grid-template-columns: 1fr;
   }
@@ -1295,6 +1311,9 @@ body {
 .login-card {
   width: 100%;
   max-width: 26rem;
+  /* min-width:auto is the flex default; without this the card refuses to go
+     narrower than its widest child and the whole page scrolls sideways. */
+  min-width: 0;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -1316,6 +1335,11 @@ body {
 .google-signin {
   display: flex;
   justify-content: center;
+  /* Google's button is rendered at a fixed pixel width it is told (see
+     LoginPage's googleWidth). This is the backstop: if the measurement is ever
+     wrong, the button is clipped to the card instead of widening the page. */
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .google-signin[aria-busy='true'] {
@@ -1398,7 +1422,7 @@ body {
   half, and each link carries its name as a title for anyone who needs it —
   while the brand keeps the mark and drops the tagline.
 */
-@media (max-width: 34rem) {
+@media (--mobile) {
   .navbar-container { padding: 0.75rem 1rem; }
   .brand-tagline { display: none; }
   .brand-wordmark { width: min(160px, 40vw); }
@@ -2037,7 +2061,7 @@ body {
 .messenger-empty h2 { font-size: 1.4rem; }
 .messenger-empty.standalone { max-width: 32rem; }
 
-@media (max-width: 780px) {
+@media (--mobile) {
   .messenger {
     flex-direction: column;
     height: auto;
@@ -2049,6 +2073,30 @@ body {
   }
 
   .messenger-thread { min-height: 26rem; }
+
+  /* The composer becomes two lines: the field on its own, the three buttons
+     under it. `order` does the reordering rather than the JSX, because the
+     field sits third in the markup for the tab order it gives on a desktop
+     keyboard — attach, emoji, type, send — and that order is still right here.
+
+     `flex-basis: 100%` is what forces the wrap: the field fills the first line
+     and pushes every button onto the second. Send then takes the rest of that
+     line, attach and emoji being `flex: none` at their icon width. */
+  .composer-row { flex-wrap: wrap; }
+
+  .composer-row textarea {
+    order: -1;
+    flex: 1 0 100%;
+  }
+
+  /* Matched on the submit type rather than on `btn-primary`: that class
+     styles nothing anywhere in this file, so a tidy-up that dropped it as dead
+     would take the mobile layout with it. There is one submit here, and it is
+     Send by definition. */
+  .composer-row > button[type='submit'] { flex: 1; }
+
+  /* 2rem of padding either side costs a 360px phone a third of the card. */
+  .login-card { padding: 1.5rem 1.15rem; }
 }
 
 /* ── Calls ──────────────────────────────────────────────────────────────
@@ -2225,7 +2273,7 @@ body {
   font-size: 0.78rem;
 }
 
-@media (max-width: 480px) {
+@media (--mobile) {
   .call-panel {
     right: 0.75rem;
     left: 0.75rem;
@@ -2403,7 +2451,7 @@ body {
   line-height: 1.15;
 }
 
-@media (max-width: 480px) {
+@media (--mobile) {
   .emoji-popover {
     left: auto;
     right: 0;

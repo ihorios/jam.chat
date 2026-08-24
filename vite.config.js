@@ -18,7 +18,37 @@ export default defineConfig({
   // server reads the one in the project root. Pointed back out so a single .env
   // configures both halves, and VITE_-prefixed keys reach the client from it.
   envDir: '..',
+  // Lightning CSS, for one feature: `@custom-media`. It lets the mobile
+  // breakpoint be declared once by name in index.css and referenced as
+  // `@media (--mobile)` everywhere else, instead of the same literal width
+  // repeated at every block that switches on it.
+  //
+  // Vite 8 already minifies with Lightning CSS; naming it here is what turns
+  // on the draft syntax and applies it to the dev server too, so `--mobile`
+  // resolves under `npm run dev` and not only in a build.
+  //
+  // `targets` is NOT optional, and its absence fails quietly: Lightning CSS
+  // inlines `@custom-media` only when the targets say the syntax has to be
+  // compiled away. Without it the at-rule is passed through verbatim, no
+  // browser understands it, and every `@media (--mobile)` block silently
+  // stops applying. The values are Lightning CSS's packed encoding,
+  // (major << 16) | (minor << 8) | patch — so Safari 15.4 is the floor.
+  //
+  // Naming a transformer here replaces PostCSS rather than joining it. There
+  // is no PostCSS config in this project, so nothing is lost today; a future
+  // PostCSS plugin would mean giving this up.
+  css: {
+    transformer: 'lightningcss',
+    lightningcss: {
+      drafts: { customMedia: true },
+      targets: { chrome: 100 << 16, firefox: 100 << 16, safari: (15 << 16) | (4 << 8) },
+    },
+  },
+
   build: {
+    // Match the transformer above; the default minifier would otherwise be
+    // esbuild, and the two disagree about what they can parse.
+    cssMinify: 'lightningcss',
     outDir: '../dist', // the only directory the Fastify server will serve
     emptyOutDir: true,
   },

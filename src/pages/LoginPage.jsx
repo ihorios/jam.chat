@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation } from 'react-router-dom';
@@ -15,6 +15,14 @@ import { checkPassword, passwordIsStrong } from '../lib/password';
 const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
 
 const EMPTY = { email: '', first_name: '', last_name: '', password: '' };
+
+/* Google renders its button at a width in pixels and will not take a
+   percentage, so a fixed number is wrong at some screen size by definition —
+   320 overflowed the card on every phone narrower than about 420px. These are
+   the bounds Google itself enforces: it clamps anything above 400, and refuses
+   to draw the `continue_with` label under about 200. */
+const GOOGLE_BTN_MIN = 200;
+const GOOGLE_BTN_MAX = 400;
 
 export default function LoginPage() {
   const { user, loading, login, register, loginWithGoogle } = useAuth();
@@ -34,6 +42,29 @@ export default function LoginPage() {
   // does not greet a new visitor with four failed requirements.
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [socialBusy, setSocialBusy] = useState(false);
+
+  /* The width to hand Google, measured from the box it has to fit inside
+     rather than assumed. Starts undefined so the first paint uses Google's own
+     default instead of flashing a wrong width, and follows the element after
+     that — which covers a rotation and a desktop window drag, not just load. */
+  const googleBoxRef = useRef(null);
+  const [googleWidth, setGoogleWidth] = useState();
+
+  useEffect(() => {
+    const box = googleBoxRef.current;
+    if (!box || typeof ResizeObserver === 'undefined') return undefined;
+
+    const observer = new ResizeObserver(([entry]) => {
+      const available = entry.contentRect.width;
+      if (!available) return; // hidden or not laid out yet; nothing to measure
+      setGoogleWidth(
+        Math.round(Math.min(GOOGLE_BTN_MAX, Math.max(GOOGLE_BTN_MIN, available))),
+      );
+    });
+
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
 
   const isRegister = mode === 'register';
   const rules = useMemo(() => checkPassword(form.password), [form.password]);
@@ -144,7 +175,7 @@ export default function LoginPage() {
             context and reloads Google's script with the matching `?hl=`. */}
         {GOOGLE_CLIENT_ID && (
           <>
-            <div className="google-signin" aria-busy={socialBusy}>
+            <div className="google-signin" aria-busy={socialBusy} ref={googleBoxRef}>
               <GoogleOAuthProvider
                 key={googleLocale}
                 clientId={GOOGLE_CLIENT_ID}
@@ -156,7 +187,7 @@ export default function LoginPage() {
                   theme="filled_black"
                   shape="pill"
                   text="continue_with"
-                  width="320"
+                  width={googleWidth}
                 />
               </GoogleOAuthProvider>
             </div>

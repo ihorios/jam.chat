@@ -56,10 +56,6 @@ export default function PresenceMetrics() {
           <div className="metric-value">{count('people')}</div>
           <div className="metric-label">{t('presence.people')}</div>
         </div>
-        <div className="metric-box">
-          <div className="metric-value">{count('anonymous')}</div>
-          <div className="metric-label">{t('presence.guests')}</div>
-        </div>
       </div>
 
       <span className={status === 'online' ? 'status-badge status-online' : 'status-badge status-offline'}>

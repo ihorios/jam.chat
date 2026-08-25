@@ -10,7 +10,7 @@
  * Swapping in Redis (or any KV with pub/sub) means implementing this same
  * interface and nothing else:
  *
- *   connect/identify   HSET  presence:<connectionId>  ... + SADD presence:ids
+ *   connect            HSET  presence:<connectionId>  ... + SADD presence:ids
  *   disconnect         DEL   presence:<connectionId>  + SREM presence:ids
  *   connections        SMEMBERS + HGETALL, or a SCAN over the keyset
  *   publish/subscribe  PUBLISH / SUBSCRIBE on one channel
@@ -29,25 +29,17 @@ export function createMemoryRealtimeStore() {
     /** What this implementation is, for the startup log. */
     kind: 'memory',
 
-    /** Records a socket that has just opened. `userId` is null when anonymous. */
+    /**
+     * Records a socket that has just opened. Always somebody's: the handshake
+     * refuses a connection with no session (plugins/realtime.js), so there is
+     * no anonymous case and no `identify` to promote one — a socket opened
+     * before signing in is closed rather than adopted.
+     */
     async connect(connectionId, { userId = null, address = null } = {}) {
       connections.set(connectionId, {
         userId: userId === null ? null : Number(userId),
         since: new Date().toISOString(),
         address,
-      });
-    },
-
-    /**
-     * Attaches an identity to a connection that already exists — a socket
-     * opened on the login page becomes a signed-in one without reconnecting.
-     */
-    async identify(connectionId, userId) {
-      const record = connections.get(connectionId);
-      if (!record) return;
-      connections.set(connectionId, {
-        ...record,
-        userId: userId === null ? null : Number(userId),
       });
     },
 

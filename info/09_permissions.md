@@ -181,8 +181,9 @@ the system than the refusal needs to.
 
 There is also `fastify.sessionUser(request)`, which returns the user or `null`
 rather than throwing — for the WebSocket handshake, which cannot throw an HTTP
-error at a client that has not finished connecting. An anonymous socket is a
-legitimate thing to have.
+error at a client that has not finished connecting. What the handshake does with
+a `null` is close the socket (`1008`) rather than adopt it — but that is its
+decision to make, and not one an exception could express.
 
 ---
 

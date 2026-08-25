@@ -35,6 +35,29 @@ async function realtimePlugin(fastify) {
   /** connectionId -> { socket, userId } for the sockets this instance holds. */
   const sockets = new Map();
 
+  /**
+   * How long a socket's identity is trusted before it is read again.
+   *
+   * Every frame used to re-read it — three queries, since hydrating a user
+   * pulls their roles for their permissions — which made establishing *who was
+   * asking* the dominant cost of the socket: four repository calls to answer an
+   * `unread`, three of them the question rather than the answer.
+   *
+   * What that re-read enforces is narrower than it looks. No frame handler
+   * consults permissions: calls check membership, and `read` and `unread` check
+   * it too, each for themselves and freshly. What is left is `is_active` — so
+   * the window this opens is that a disabled account may go on sending frames
+   * for a few seconds after being disabled, on a socket it already had open.
+   *
+   * Five seconds, then, rather than none: bounded, and small against the cost
+   * of asking on every candidate in a call.
+   *
+   * It is not a way past authentication. A socket cannot exist without a
+   * session in the first place, and this only decides how often the account
+   * behind an existing one is re-examined.
+   */
+  const IDENTITY_TTL_MS = 5000;
+
   const send = (socket, payload) => {
     // 1 === OPEN. A socket can close between choosing to send and sending.
     if (socket.readyState !== 1) return;
@@ -85,14 +108,17 @@ async function realtimePlugin(fastify) {
   /** The figures /api/presence reports, counted over every instance's sockets. */
   const presenceCounts = async () => {
     const connections = await store.connections();
-    const signedIn = connections.filter((c) => c.userId !== null);
 
+    /*
+     * `anonymous` used to be reported here and is not any more: a socket cannot
+     * be opened without a session, so the figure was definitionally zero. Every
+     * connection is somebody's.
+     */
     return {
       total: connections.length,
-      authenticated: signedIn.length,
-      anonymous: connections.length - signedIn.length,
+      authenticated: connections.length,
       // Distinct people, not sockets: three tabs are one user online.
-      people: new Set(signedIn.map((c) => c.userId)).size,
+      people: new Set(connections.map((c) => c.userId)).size,
     };
   };
 
@@ -105,7 +131,9 @@ async function realtimePlugin(fastify) {
    * open.
    */
   const broadcastPresence = async () => {
-    const watchers = [...sockets.values()].filter((entry) => entry.userId !== null);
+    // Every socket here is somebody's — the handshake requires a session — so
+    // there is no anonymous half to filter out any more.
+    const watchers = [...sockets.values()];
     if (watchers.length === 0) return;
 
     const counts = await presenceCounts();
@@ -214,7 +242,6 @@ async function realtimePlugin(fastify) {
     const model = fastify.models.user_groups.model;
 
     for (const [, entry] of sockets) {
-      if (entry.userId === null) continue;
       const joined = now.includes(Number(entry.userId));
       if (!joined && !lost.includes(Number(entry.userId))) continue;
 
@@ -272,7 +299,7 @@ async function realtimePlugin(fastify) {
 
     const model = fastify.models.user_messages.model;
 
-    const listening = [...sockets.values()].filter((entry) => entry.userId !== null);
+    const listening = [...sockets.values()];
     if (listening.length === 0) return;
 
     /*
@@ -334,11 +361,49 @@ async function realtimePlugin(fastify) {
     const connectionId = randomUUID();
     const user = await fastify.sessionUser(request).catch(() => null);
 
+    /*
+     * A session, or no socket.
+     *
+     * Anonymous connections used to be welcome, on the reasoning that a browser
+     * sitting on the login page is connected and the presence figures should
+     * say so — and that signing in could then identify the socket in place
+     * rather than replacing it. Neither held up. The client reopens whenever the
+     * identity changes (RealtimeContext keys its effect on the user id), so the
+     * identify-in-place path was never once exercised; and what remained was a
+     * dashboard tile counting login-page visitors.
+     *
+     * What it cost was the only unauthenticated-reachable path in the
+     * application with a database bill: every open publishes a presence event,
+     * and every presence event reads every watching user. Refusing here is
+     * better than bounding it, because a limit still admits the traffic it
+     * allows.
+     *
+     * 1008 is Policy Violation, which is what "you may not open this" is.
+     */
+    if (!user) {
+      socket.close(1008, 'Authentication required');
+      return;
+    }
+
     await store.connect(connectionId, {
-      userId: user?.id ?? null,
+      userId: user.id,
       address: request.ip,
     });
-    sockets.set(connectionId, { socket, userId: user?.id ?? null });
+    /*
+     * `identity` is the user this socket belongs to, remembered for a moment.
+     *
+     * Every frame re-reads it — that is what stops a disabled account acting on
+     * a tab it already had open — and that read is three queries, since
+     * hydrating a user pulls their roles for their permissions. At one per
+     * frame it was the dominant cost of the socket: four repository calls to
+     * answer an `unread`, three of them establishing who was asking.
+     *
+     * No frame handler consults permissions; they consult membership, and every
+     * one of them checks that for itself. So what the re-read actually enforces
+     * is `is_active`, and a few seconds of staleness there is a bounded,
+     * deliberate trade — see IDENTITY_TTL_MS.
+     */
+    sockets.set(connectionId, { socket, userId: user.id, identity: { user, at: Date.now() } });
 
     /*
      * Registered before anything that can fail, and that ordering is the whole
@@ -372,8 +437,8 @@ async function realtimePlugin(fastify) {
     send(socket, {
       type: 'hello',
       connectionId,
-      user: user ? { id: user.id, name: user.name, email: user.email } : null,
-      ...(user ? await unreadFor(fastify.models, user.id) : { groups: {}, total: 0 }),
+      user: { id: user.id, name: user.name, email: user.email },
+      ...(await unreadFor(fastify.models, user.id)),
     });
 
     // After hello, so a dashboard opening its own socket is counted in the
@@ -413,23 +478,23 @@ async function realtimePlugin(fastify) {
 
       if (payload.type === 'ping') return send(socket, { type: 'pong' });
 
-      // The identity is taken from the session cookie every time, never from
-      // the frame: a client saying who it is proves nothing.
-      const current = entry.userId
-        ? await fastify.models.users.findById(entry.userId)
-        : await fastify.sessionUser(request).catch(() => null);
+      /*
+       * Who this socket belongs to — taken from the session it was opened with
+       * and never from the frame, since a client saying who it is proves
+       * nothing. Re-read when the remembered answer is older than
+       * IDENTITY_TTL_MS.
+       */
+      const now = Date.now();
+      if (!entry.identity || now - entry.identity.at >= IDENTITY_TTL_MS) {
+        entry.identity = {
+          user: await fastify.models.users.findById(entry.userId),
+          at: now,
+        };
+      }
+      const current = entry.identity.user;
 
       if (!current?.is_active) {
         return send(socket, { type: 'error', error: 'Authentication required' });
-      }
-
-      // A socket opened before signing in becomes that user's without
-      // reconnecting.
-      if (entry.userId === null) {
-        entry.userId = current.id;
-        await store.identify(connectionId, current.id);
-        // An anonymous connection just became a signed-in one.
-        await store.publish({ model: 'presence', type: 'identified' });
       }
 
       // Calls answer for themselves, with the identity this handler proved.

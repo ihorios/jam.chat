@@ -316,4 +316,4 @@ choosing and pick its own bucket.
 | `GET /api/presence` | `users:read` (unscoped) |
 | `GET /api/calls/ice` | session |
 | `GET /liveness` · `/healthz` · `/readyz` | none |
-| `WS /ws` | session optional — anonymous sockets are welcome |
+| `WS /ws` | **session required** — a handshake without one is closed with `1008` |

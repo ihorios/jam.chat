@@ -23,13 +23,27 @@ JavaScript to leak.
 ```js
 const connectionId = randomUUID();
 const user = await fastify.sessionUser(request).catch(() => null);
-await store.connect(connectionId, { userId: user?.id ?? null, address: request.ip });
-sockets.set(connectionId, { socket, userId: user?.id ?? null });
+if (!user) { socket.close(1008, 'Authentication required'); return; }
 ```
 
-`sessionUser` returns `null` rather than throwing, because **anonymous sockets
-are welcome**. A browser sitting on the login page is connected, and the presence
-figures say so.
+**A session, or no socket.** `sessionUser` returns `null` rather than throwing,
+and that answer now closes the connection with `1008` (Policy Violation).
+
+Anonymous connections used to be welcome, so that a browser on the login page
+counted towards presence and could be *promoted in place* on sign-in rather than
+replaced. Neither held up. The client reopens whenever the identity changes
+(`RealtimeContext` keys its effect on the user id), so the promotion path was
+never once exercised — and what remained was a dashboard tile counting
+login-page visitors.
+
+What it cost was the only unauthenticated-reachable path in the application with
+a database bill: every open publishes a presence event, and every presence event
+reads every watching user. Refusing is better than bounding, because a limit
+still admits the traffic it allows.
+
+The client does its half too: `RealtimeContext` opens no socket at all without a
+session. Opening one anyway would turn every signed-out visitor into a permanent
+reconnect loop against a door that never opens.
 
 The first frame out is always `hello`:
 
@@ -41,19 +55,35 @@ The first frame out is always `hello`:
 Presence is published *after* `hello`, so a dashboard opening its own socket is
 counted in the first presence frame it receives.
 
-### Identifying in place
-
-Signing in does not require a new socket on the server side:
+### The socket remembers who it belongs to
 
 ```js
-if (entry.userId === null) {
-  entry.userId = current.id;
-  await store.identify(connectionId, current.id);
-  await store.publish({ model: 'presence', type: 'identified' });
-}
+const IDENTITY_TTL_MS = 5000;
 ```
 
-The client nonetheless reopens on identity change — see §6.
+Every frame used to re-read the account — **three queries**, since hydrating a
+user pulls their roles for their permissions. That made establishing *who was
+asking* the dominant cost of the socket: four repository calls to answer an
+`unread`, three of them the question rather than the answer. It is now **1.00
+per frame**.
+
+What the re-read enforces is narrower than it looks. No frame handler consults
+permissions: calls check membership, and `read` and `unread` check it too, each
+for itself and freshly. What is left is `is_active`.
+
+So the trade is bounded and worth naming: **a disabled account may go on sending
+frames for up to five seconds**, on a socket it already had open. Measured:
+
+```
+account disabled at t=0
+  t + 0.3s   still answered
+  t + 2.3s   still answered
+  t + 5.8s   REFUSED
+```
+
+It is not a way past authentication — a socket cannot exist without a session in
+the first place. This only decides how often the account behind an existing one
+is re-examined.
 
 ### Identity is never taken from the frame
 
@@ -94,7 +124,7 @@ Unparseable input gets `Expected JSON`.
 | :--- | :--- |
 | `hello` | `connectionId`, `user`, initial unread |
 | `unread` | `{ groups, latest, total }` — counts per group, plus the last line said in each, for the sidebar |
-| `presence` | `{ total, authenticated, anonymous, people }` |
+| `presence` | `{ total, authenticated, people }` |
 | `message` | a whole message row (new **or** edited) |
 | `message-deleted` | `{ id, group }` |
 | `group` | a whole group row |
@@ -112,7 +142,7 @@ JavaScript**: every method is async, connections are addressed by an opaque
 string id, and nothing hands out a live object a caller could mutate.
 
 ```js
-connect / identify   HSET presence:<id> … + SADD presence:ids
+connect              HSET presence:<id> … + SADD presence:ids
 disconnect           DEL  presence:<id>   + SREM presence:ids
 connections          SMEMBERS + HGETALL, or a SCAN
 publish / subscribe  PUBLISH / SUBSCRIBE on one channel
@@ -307,11 +337,16 @@ A connection is a **WebSocket, not a person**. One user with three tabs is three
 connections and one entry under `users`.
 
 ```js
-{ total, authenticated, anonymous, people }
+{ total, authenticated, people }
 ```
 
-`people` is `new Set(signedIn.map(c => c.userId)).size` — distinct people, the
+`people` is `new Set(connections.map(c => c.userId)).size` — distinct people, the
 same figure `GET /api/presence` reports.
+
+`total` and `authenticated` are now the same number, because **every connection
+is somebody's**: a socket cannot be opened without a session. There used to be an
+`anonymous` figure and a dashboard tile drawing it; both are gone, along with the
+`presence.guests` string they used.
 
 Presence changes travel *through the store* rather than being broadcast
 directly, so a socket opening on another instance would still move the number
@@ -320,9 +355,6 @@ here once the store is shared.
 Delivery is gated on the same unscoped `users:read` the HTTP route requires, and
 read fresh per socket — a permission taken away stops the numbers arriving on a
 tab that already had it open.
-
-Anonymous connections are counted but not named. There is nothing to name them
-with, which is rather the point of reporting them separately.
 
 ---
 

@@ -41,45 +41,68 @@ async function messenger(t) {
   };
 }
 
-t.test('a socket says hello, signed in or not', async (t) => {
+t.test('a socket needs a session, and says hello with one', async (t) => {
   const app = await listening(t);
-
-  const anonymous = await connect(app);
-  const hello = await anonymous.waitFor('hello');
-  t.equal(hello.user, null, 'an anonymous socket is welcome');
-  t.ok(hello.connectionId, 'and is still identified as a connection');
-  t.equal(hello.total, 0, 'with nothing unread, having nowhere to read');
 
   const admin = await connect(app, await login(app));
   const greeting = await admin.waitFor('hello');
   t.equal(greeting.user.email, ADMIN.email, 'the session cookie is read at the handshake');
+  t.ok(greeting.connectionId, 'and the connection is named');
   t.same(greeting.groups, {}, 'the admin is in no group yet');
 
-  await anonymous.close();
   await admin.close();
 });
 
-t.test('presence counts sockets, and separates signed in from not', async (t) => {
+/*
+ * A socket without a session is refused rather than adopted.
+ *
+ * Anonymous connections used to be welcome, so that a browser on the login page
+ * counted towards presence and could be promoted in place on sign-in. The
+ * client reopens whenever the identity changes, so the promotion never
+ * happened — and what remained was the only unauthenticated-reachable path in
+ * the application with a database bill: every open publishes a presence event,
+ * and every presence event reads every watching user.
+ */
+t.test('a socket with no session is closed, and leaves nothing behind', async (t) => {
+  const app = await listening(t);
+
+  const stranger = await connect(app);
+  const code = await new Promise((resolve) => {
+    if (stranger.socket.readyState === 3) return resolve(stranger.socket._closeCode ?? 1008);
+    stranger.socket.on('close', resolve);
+    setTimeout(() => resolve(null), 2000);
+  });
+
+  t.equal(code, 1008, 'closed with policy violation rather than left open');
+  t.same(
+    await app.realtime.connections(), [],
+    'and never registered, so presence does not count somebody who never got in'
+  );
+});
+
+t.test('presence counts sockets, not people', async (t) => {
   const app = await listening(t);
   const cookies = await login(app);
 
   const [status, empty] = await call(app, 'GET', '/api/presence', undefined, cookies);
   t.equal(status, 200);
   t.same(
-    { total: empty.total, authenticated: empty.authenticated, anonymous: empty.anonymous },
-    { total: 0, authenticated: 0, anonymous: 0 },
+    { total: empty.total, authenticated: empty.authenticated },
+    { total: 0, authenticated: 0 },
     'nobody is connected until a socket opens'
   );
 
-  const anonymous = await connect(app);
   const first = await connect(app, cookies);
   const second = await connect(app, cookies);
-  await Promise.all([anonymous.waitFor('hello'), first.waitFor('hello'), second.waitFor('hello')]);
+  await Promise.all([first.waitFor('hello'), second.waitFor('hello')]);
 
   const [, busy] = await call(app, 'GET', '/api/presence', undefined, cookies);
-  t.equal(busy.total, 3, 'three sockets');
-  t.equal(busy.authenticated, 2, 'two of them signed in');
-  t.equal(busy.anonymous, 1);
+  t.equal(busy.total, 2, 'two sockets');
+  t.equal(
+    busy.authenticated, busy.total,
+    'every one of them signed in — a socket cannot be opened otherwise'
+  );
+  t.equal(busy.anonymous, undefined, 'so there is no anonymous figure to report');
   t.equal(busy.users.length, 1, 'but only one person: tabs are not people');
   t.match(busy.users[0], { email: ADMIN.email, connections: 2 });
   t.ok(busy.users[0].since, 'and how long they have been here');
@@ -87,10 +110,9 @@ t.test('presence counts sockets, and separates signed in from not', async (t) =>
   await second.close();
   await eventually(async () => {
     const [, after] = await call(app, 'GET', '/api/presence', undefined, cookies);
-    return after.total === 2 && after.users[0].connections === 1;
+    return after.total === 1 && after.users[0].connections === 1;
   }, 'the closed socket to be forgotten');
 
-  await anonymous.close();
   await first.close();
 });
 
@@ -102,36 +124,23 @@ t.test('presence is pushed as it changes, to the sockets allowed it', async (t) 
   const first = await watcher.waitFor('presence', 'presence for its own socket');
   t.match(
     first,
-    { total: 1, authenticated: 1, anonymous: 0, people: 1 },
+    { total: 1, authenticated: 1, people: 1 },
     'the dashboard socket counts itself'
   );
-
-  const anonymous = await connect(app);
-  const joined = await watcher.waitFor(
-    (frame) => frame.type === 'presence' && frame.total === 2,
-    'the guest to be counted'
-  );
-  t.match(joined, { authenticated: 1, anonymous: 1, people: 1 }, 'a guest is counted apart');
 
   // A second tab of the same person: another connection, still one user.
   const secondTab = await connect(app, cookies);
   const busy = await watcher.waitFor(
-    (frame) => frame.type === 'presence' && frame.total === 3,
+    (frame) => frame.type === 'presence' && frame.total === 2,
     'the second tab'
   );
   t.equal(busy.people, 1, 'tabs are not people');
-  t.equal(busy.authenticated, 2);
+  t.equal(busy.authenticated, 2, 'and both are signed in, since nothing else may connect');
 
   await secondTab.close();
-  await anonymous.close();
   await watcher.waitFor(
     (frame) => frame.type === 'presence' && frame.total === 1,
-    'the closed sockets to be forgotten'
-  );
-
-  t.notOk(
-    anonymous.frames.some((frame) => frame.type === 'presence'),
-    'a socket without users:read is never told who is online'
+    'the closed socket to be forgotten'
   );
 
   await watcher.close();
@@ -402,7 +411,13 @@ t.test('a frame that cannot be handled is refused, not fatal', async (t) => {
   const socket = await connect(app, await login(app));
   await socket.waitFor('hello');
 
-  const mend = breaks(t, app, 'users', 'findById');
+  /*
+   * `user_groups.writeLink`, not `users.findById`: the socket remembers who it
+   * belongs to for a few seconds (IDENTITY_TTL_MS), so breaking the identity
+   * read proves nothing about a frame sent inside that window. What this needs
+   * to break is something the frame itself reaches for — marking a group read.
+   */
+  const mend = breaks(t, app, 'user_groups', 'writeLink');
 
   const rejections = await whileTheDatabaseIsGone(t, async () => {
     socket.socket.send(JSON.stringify({ type: 'read', group: 1 }));
@@ -442,4 +457,43 @@ t.test('a handshake that fails leaves nothing behind', async (t) => {
   );
 
   if (socket) await socket.close().catch(() => {});
+});
+
+/*
+ * A socket remembers who it belongs to for a few seconds.
+ *
+ * Every frame used to re-read the account — three queries, since hydrating a
+ * user pulls their roles for their permissions — which made establishing *who
+ * was asking* the dominant cost of the socket: four repository calls to answer
+ * an `unread`, three of them the question rather than the answer.
+ *
+ * What the re-read enforces is narrower than it looks. No frame handler
+ * consults permissions; they consult membership, and each checks that for
+ * itself and freshly. What is left is `is_active`, so what this trades is a few
+ * seconds before a disabled account stops being able to send frames on a socket
+ * it already had open.
+ */
+t.test('a socket does not re-read its account on every frame', async (t) => {
+  const app = await listening(t);
+  const socket = await connect(app, await login(app));
+  await socket.waitFor('hello');
+
+  let reads = 0;
+  const real = app.models.users.findById.bind(app.models.users);
+  app.models.users.findById = (...args) => { reads += 1; return real(...args); };
+  t.teardown(() => { app.models.users.findById = real; });
+
+  for (let i = 0; i < 20; i += 1) socket.socket.send(JSON.stringify({ type: 'unread' }));
+  await eventually(
+    () => socket.frames.filter((frame) => frame.type === 'unread').length >= 20,
+    'all twenty frames to be answered'
+  );
+
+  t.equal(
+    socket.frames.filter((frame) => frame.type === 'unread').length >= 20, true,
+    'every frame is answered'
+  );
+  t.ok(reads <= 1, `and the account is read at most once for all of them (was ${reads})`);
+
+  await socket.close();
 });

@@ -155,7 +155,6 @@
   "presence": {
     "connections": "Connections online",
     "people": "Signed-in users",
-    "guests": "Guest connections",
     "live": "Live",
     "reconnecting": "Reconnecting — figures may be stale"
   },

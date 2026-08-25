@@ -21,9 +21,10 @@ const NOTHING_UNREAD = { groups: {}, latest: {}, total: 0 };
  * the messenger is open. A socket per component would mean several per tab and
  * a presence count that flattered itself.
  *
- * The socket is opened for anonymous visitors too. That is deliberate — the
- * server counts connections whether or not they have signed in, and reopening
- * on sign-in is what turns one into the other.
+ * Only ever for somebody signed in. It used to be opened for anonymous visitors
+ * as well, so that a browser on the login page counted towards presence — but
+ * the server now refuses a handshake without a session, and this effect is
+ * keyed on the identity, so signing in opens one and signing out closes it.
  */
 export function RealtimeProvider({ children }) {
   const { user } = useAuth();
@@ -53,6 +54,19 @@ export function RealtimeProvider({ children }) {
 
   useEffect(() => {
     setUnread(NOTHING_UNREAD);
+
+    /*
+     * No session, no socket — and this is not merely an optimisation.
+     *
+     * The server refuses a handshake without one (plugins/realtime.js), and
+     * openSocket reconnects on every close with a backoff that tops out at
+     * fifteen seconds. Opening one anyway would turn every signed-out visitor
+     * into a permanent reconnect loop against a door that will never open.
+     */
+    if (identity === null) {
+      setStatus('offline');
+      return undefined;
+    }
 
     const socket = openSocket({
       onStatus: setStatus,

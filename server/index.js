@@ -17,9 +17,9 @@ try {
   process.exit(1);
 }
 
-// Render (and most orchestrators) send SIGTERM before replacing an instance;
-// close lets in-flight requests finish and releases the Postgres pool.
-const SHUTDOWN_TIMEOUT_MS = 5000;
+// Most orchestrators send SIGTERM before replacing an instance;
+// close lets in-flight requests finish and releases the Postgres pool. How long
+// it may take before the process stops waiting is config.shutdownTimeoutMs.
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, async () => {
@@ -29,9 +29,11 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     // socket that will not die — give up and let the next start have it.
     // unref() so this timer alone cannot keep the process alive.
     const giveUp = setTimeout(() => {
-      app.log.error(`Shutdown did not finish in ${SHUTDOWN_TIMEOUT_MS}ms; exiting anyway.`);
+      app.log.error(
+        `Shutdown did not finish in ${config.shutdownTimeoutMs}ms; exiting anyway.`
+      );
       process.exit(1);
-    }, SHUTDOWN_TIMEOUT_MS);
+    }, config.shutdownTimeoutMs);
     giveUp.unref();
 
     try {

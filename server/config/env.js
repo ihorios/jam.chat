@@ -96,6 +96,21 @@ export const config = Object.freeze({
   dbBootTimeoutMs: parseInt(process.env.DB_BOOT_TIMEOUT_MS || '15000', 10),
   /** The same bound for settling where attachments go. See plugins/files.js. */
   fileBootTimeoutMs: parseInt(process.env.FILE_BOOT_TIMEOUT_MS || '15000', 10),
+  /*
+   * How long a shutdown gets before the process stops waiting for it.
+   *
+   * The bound on the way out, as the two above are on the way in. `close()`
+   * lets in-flight requests finish and releases the pool; what it must never do
+   * is hold the port while a wedged query or a socket that will not die keeps it
+   * open, because the instance replacing this one needs that port. See
+   * server/index.js.
+   *
+   * Configurable because the right number is a property of the deployment
+   * rather than of the code: it wants to be comfortably under whatever the
+   * platform allows between SIGTERM and SIGKILL, and platforms disagree about
+   * that. Render allows 30 seconds; five is a wide margin inside it.
+   */
+  shutdownTimeoutMs: parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '5000', 10),
   host: process.env.HOST || '0.0.0.0',
 
   /**

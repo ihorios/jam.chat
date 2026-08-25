@@ -17,6 +17,7 @@ React 19 + Vite ── HTTP + WebSocket ── Fastify 5 ── Postgres
 ```bash
 npm install
 cp .env.example .env      # then fill in SESSION_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
+npm run build             # build react front end app
 npm run dev               # client on :5173, proxying the API to :3000
 npm run server            # the backend, in another terminal
 ```
@@ -80,8 +81,7 @@ deletions, unread counts, presence and call signalling. Delivery is decided by
 the same permissions a request would be — except a message, which follows
 membership, so /chats is somebody's own conversations whatever their role.
 
-**Two languages**, English and Ukrainian, chosen from the browser and then from
-the account. Every string in the interface is a key; a test fails the build if
+**Multi languag**, English and Ukrainian with options to add more, chosen from the browser and then from the account. Every string in the interface is a key; a test fails the build if
 one is not.
 
 ---
@@ -210,7 +210,7 @@ list that forgot its pagination.
 
 ## Deploying
 
-`render.yaml` describes it: `npm install && npm run build`, then `npm start`, with
+Commans required: `npm install && npm run build`, then `npm start`, with
 the health check on `/liveness`. Everything else is environment variables set in
 the dashboard rather than in a file. For anything real you want `DB_STRING`,
 `SESSION_SECRET`, and an S3-compatible bucket — the first two because the
@@ -220,13 +220,6 @@ survive a deploy.
 ---
 
 ## Further reading
-
-| | |
-| :--- | :--- |
-| `.env.example` | every setting, and why it is there |
-| `docs/file.md` | attachments end to end, with a bucket smoke test |
-| `app.md` | plan for an Android wrapper around this app |
-| `docs/todos.md` | what is next |
 
 The code is commented on the assumption that the reader wants to know *why*
 something is the way it is, not what the next line does. The interesting ones are

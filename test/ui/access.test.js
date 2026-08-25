@@ -132,3 +132,38 @@ t.test('the messenger draws its message controls from a scope', async (t) => {
     );
   }
 });
+
+/*
+ * Which attachments the messenger tries to draw.
+ *
+ * The set is derived from the icon map rather than written twice, so adding an
+ * extension to ICONS is the whole of making it previewable. This checks the
+ * derivation holds — a second, drifting list is exactly the kind of thing that
+ * shows a paperclip beside a photograph forever.
+ */
+t.test('image attachments are recognised from the icon map', async (t) => {
+  const source = fs.readFileSync(
+    path.join(import.meta.dirname, '..', '..', 'src', 'components', 'Attachments.jsx'),
+    'utf8'
+  );
+
+  t.match(
+    source,
+    /const IMAGES = new Set\(\s*Object\.entries\(ICONS\)/,
+    'the previewable set is read off the icon map, not maintained beside it'
+  );
+
+  // Every extension the map calls an image should be one somebody would expect
+  // to see drawn.
+  for (const extension of ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg']) {
+    t.match(
+      source,
+      new RegExp(`${extension}: 'image'`),
+      `${extension} is an image, so it draws itself`
+    );
+  }
+
+  // And the fallback is what makes trusting a filename safe.
+  t.match(source, /onError=\{\(\) => setDrawable\(false\)\}/,
+    'a file that will not decode falls back to its glyph');
+});

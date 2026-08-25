@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { api, uploadFiles } from '../lib/api';
 import { emojiOnly, formatDateTime, userLabel } from '../lib/format';
 import { saveMessageEdit, discardUploads, isEdited } from '../lib/messages';
+import { conversationOf, isThreadLoading, previewOf as threadPreview } from '../lib/thread';
 import { scopeReaches } from '../lib/permissions';
 import Avatar from '../components/Avatar';
 import Icon from '../components/Icon';
@@ -46,11 +47,24 @@ export default function MessengerPage() {
 
   const [groups, setGroups] = useState([]);
   const [users, setUsers] = useState([]);
-  const [messages, setMessages] = useState([]);
+  /*
+   * The loaded conversation, and the group it belongs to, as one value.
+   *
+   * They were two — an array, and an assumption that it matched whatever was
+   * selected. It did not, for one render: selecting a group re-renders
+   * immediately, while the effect that fetches the new conversation runs after
+   * that render. In between, the *new* group was drawn with the *previous*
+   * group's messages under its header and its last line in the sidebar, until
+   * the fetch landed and corrected it.
+   *
+   * Keeping the two together makes that state unrepresentable rather than
+   * merely brief: everything below asks whether this conversation is the one
+   * being looked at, and there is a truthful answer at every render.
+   */
+  const [thread, setThread] = useState({ group: null, items: [] });
   const [selectedId, setSelectedId] = useState(null);
   // The conversation loads on its own now, so it has its own two states.
-  const [threadLoading, setThreadLoading] = useState(false);
-  const [threadError, setThreadError] = useState('');
+  const [threadError, setThreadError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -136,11 +150,11 @@ export default function MessengerPage() {
    */
   const loadMessages = useCallback(async (groupId) => {
     if (!canReadMessages || groupId === null || groupId === undefined) {
-      setMessages([]);
+      setThread({ group: groupId ?? null, items: [] });
       return;
     }
     const res = await api(`/api/user_messages?scope=member&group=${groupId}`);
-    setMessages(res.user_messages);
+    setThread({ group: groupId, items: res.user_messages });
   }, [canReadMessages]);
 
   useEffect(() => {
@@ -175,15 +189,21 @@ export default function MessengerPage() {
    */
   useEffect(() => {
     let cancelled = false;
-    setMessages([]);
-
     if (selectedId === null) return undefined;
 
-    setThreadError('');
-    setThreadLoading(true);
+    /*
+     * Nothing is cleared or flagged here, deliberately. Clearing from an effect
+     * is what left a window of one render showing the previous conversation —
+     * an effect runs after the render that selected the new group. What is on
+     * screen is derived from `thread.group` instead, which is right in the very
+     * first render because it is a fact rather than a scheduled update.
+     */
     loadMessages(selectedId)
-      .catch((err) => { if (!cancelled) setThreadError(err.message); })
-      .finally(() => { if (!cancelled) setThreadLoading(false); });
+      .catch((err) => {
+        // Carried with the group it belongs to, so a failure on one
+        // conversation is not still on screen when another is opened.
+        if (!cancelled) setThreadError({ group: selectedId, message: err.message });
+      });
 
     return () => { cancelled = true; };
   }, [selectedId, loadMessages]);
@@ -232,13 +252,16 @@ export default function MessengerPage() {
     // messages go with it — we are no longer entitled to any of them.
     if (event.type === 'group-gone') {
       setGroups((prev) => prev.filter((group) => group.id !== event.id));
-      setMessages((prev) => prev.filter((message) => message.group !== event.id));
+      setThread((prev) => (prev.group === event.id ? { group: null, items: [] } : prev));
       setSelectedId((prev) => (prev === event.id ? null : prev));
       return;
     }
 
     if (event.type === 'message-deleted') {
-      setMessages((prev) => prev.filter((message) => message.id !== event.id));
+      setThread((prev) => ({
+        ...prev,
+        items: prev.items.filter((message) => message.id !== event.id),
+      }));
       // Nothing may go on pointing at a message that is no longer there.
       setReplyTo((prev) => (prev?.id === event.id ? null : prev));
       setEditing((prev) => (prev?.id === event.id ? null : prev));
@@ -255,11 +278,12 @@ export default function MessengerPage() {
      */
     if (event.message.group !== selectedRef.current) return;
 
-    setMessages((prev) => (
-      prev.some((message) => message.id === event.message.id)
-        ? prev.map((message) => (message.id === event.message.id ? event.message : message))
-        : [...prev, event.message]
-    ));
+    setThread((prev) => ({
+      ...prev,
+      items: prev.items.some((message) => message.id === event.message.id)
+        ? prev.items.map((m) => (m.id === event.message.id ? event.message : m))
+        : [...prev.items, event.message],
+    }));
   }), [subscribe, loadMessages]);
 
   // A group being looked at is a group being read, including messages that
@@ -270,8 +294,8 @@ export default function MessengerPage() {
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
   const messagesById = useMemo(
-    () => new Map(messages.map((message) => [message.id, message])),
-    [messages]
+    () => new Map(thread.items.map((message) => [message.id, message])),
+    [thread]
   );
 
   /**
@@ -317,27 +341,19 @@ export default function MessengerPage() {
   }, [currentUser, t]);
 
   /*
-   * `messages` holds one conversation — the open one — so this is it.
-   *
-   * It used to be every message the reader could see, filtered down per group.
-   * Lazy loading means there is nothing to filter: what was fetched is what is
-   * being looked at.
+   * What is on screen, all of it derived from one question: is the conversation
+   * we hold the one being looked at? See src/lib/thread.js for why that has to
+   * be asked rather than assumed.
    */
-  const conversation = messages;
+  const errorFor = (groupId) => (threadError?.group === groupId ? threadError.message : null);
 
-  /**
-   * The line under a group's name in the sidebar.
-   *
-   * For the open conversation it is whatever is at the bottom of it, which is
-   * what keeps it current the instant somebody sends something. For every other
-   * group it comes from the unread frame, because their messages are not
-   * loaded — and that frame arrives whenever anything is said, so the preview
-   * moves live without holding the conversation to derive it from.
-   */
-  const previewOf = useCallback((group) => {
-    if (group.id === selectedId) return conversation[conversation.length - 1] || null;
-    return unread.latest?.[group.id] || null;
-  }, [selectedId, conversation, unread.latest]);
+  const conversation = conversationOf(thread, selectedId);
+  const threadLoading = isThreadLoading(thread, selectedId, errorFor(selectedId) !== null);
+
+  const previewOf = useCallback(
+    (group) => threadPreview(thread, unread.latest, group.id),
+    [thread, unread.latest]
+  );
 
   /**
    * The composer is as tall as what is in it.
@@ -491,7 +507,7 @@ export default function MessengerPage() {
     try {
       await api(`/api/user_groups/${group.id}`, { method: 'DELETE' });
       setGroups((prev) => prev.filter((row) => row.id !== group.id));
-      setMessages((prev) => prev.filter((message) => message.group !== group.id));
+      setThread((prev) => (prev.group === group.id ? { group: null, items: [] } : prev));
       setSelectedId((prev) => (prev === group.id ? null : prev));
     } catch (err) {
       setGroupError(err.message);
@@ -503,7 +519,7 @@ export default function MessengerPage() {
     try {
       await api(`/api/messenger/groups/${group.id}/leave`, { method: 'POST' });
       setGroups((prev) => prev.filter((row) => row.id !== group.id));
-      setMessages((prev) => prev.filter((message) => message.group !== group.id));
+      setThread((prev) => (prev.group === group.id ? { group: null, items: [] } : prev));
       setSelectedId((prev) => (prev === group.id ? null : prev));
     } catch (err) {
       setGroupError(err.message);
@@ -654,7 +670,10 @@ export default function MessengerPage() {
       try {
         const saved = await saveMessageEdit(editing, { value: draft, files: attachments });
         // Ours is updated here; everybody else's arrives over the socket.
-        setMessages((prev) => prev.map((m) => (m.id === saved.id ? saved : m)));
+        setThread((prev) => ({
+          ...prev,
+          items: prev.items.map((m) => (m.id === saved.id ? saved : m)),
+        }));
         setEditing(null);
         setDraft('');
         setAttachments([]);
@@ -905,8 +924,9 @@ export default function MessengerPage() {
             <div className="thread-body">
               {!canReadMessages ? (
                 <p className="no-perm">{t('messenger.cannotRead')}</p>
-              ) : threadError ? (
-                <p className="modal-error">{threadError}</p>
+              ) : errorFor(selectedId) ? (
+                /* This group's failure, not whichever one failed last. */
+                <p className="modal-error">{errorFor(selectedId)}</p>
               ) : threadLoading ? (
                 /* Only while a conversation is actually being fetched, which is
                    now a thing that happens: opening a group is a round trip.

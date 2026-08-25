@@ -63,7 +63,8 @@ delete it deliberately. Departures are announced in the conversation itself.
 and delete appear where the permission reaches: on your own words with an
 own-scoped grant, on anybody's with an unscoped one, and nowhere without. Attachments are
 read through the server, never from the bucket directly, so leaving a group ends
-access to what was said in it.
+access to what was said in it — and an image among them draws itself rather
+than showing a paperclip.
 
 **A conversation loads when you open it.** The sidebar draws itself from the
 unread frame alone — a count and a last line per group — so visiting the

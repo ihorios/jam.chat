@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Icon from './Icon';
@@ -30,6 +30,51 @@ const ICONS = {
 
 const iconFor = (extension) => ICONS[String(extension || '').toLowerCase()] || 'attach_file';
 
+/**
+ * The extensions worth trying to draw rather than describe.
+ *
+ * Read back off the icon map, so the two cannot disagree about what an image
+ * is — adding `bmp` to ICONS is what makes a bmp previewable, and there is no
+ * second list to remember.
+ */
+const IMAGES = new Set(
+  Object.entries(ICONS).filter(([, icon]) => icon === 'image').map(([extension]) => extension)
+);
+
+const isImage = (file) => IMAGES.has(String(file.extension || '').toLowerCase());
+
+/**
+ * An attachment's mark: the picture itself when it is one, the glyph for its
+ * type otherwise.
+ *
+ * Falling back on error rather than trusting the extension, because a file is
+ * named by whoever uploaded it: `notes.png` may be anything at all, and a
+ * broken-image box beside a filename says less than the paperclip it replaced.
+ * A row can also outlive its object — see the note on missing bytes in
+ * docs/file.md — and that arrives here as the same failure.
+ *
+ * `alt=""` on purpose: the file's name is already beside it, and a screen
+ * reader announcing it twice is worse than not announcing the thumbnail at all.
+ */
+function AttachmentMark({ file, className }) {
+  const [drawable, setDrawable] = useState(isImage(file));
+
+  if (!drawable) return <Icon className={className} name={iconFor(file.extension)} />;
+
+  return (
+    <img
+      className={[className, 'attachment-thumb'].filter(Boolean).join(' ')}
+      src={`/api/files/${file.id}/content`}
+      alt=""
+      /* Only what is on screen. A conversation of photographs would otherwise
+         fetch every one of them to draw thumbnails nobody has scrolled to. */
+      loading="lazy"
+      decoding="async"
+      onError={() => setDrawable(false)}
+    />
+  );
+}
+
 /** Read-only: what is already attached to a message. */
 export function AttachmentList({ files }) {
   if (!files || files.length === 0) return null;
@@ -45,7 +90,7 @@ export function AttachmentList({ files }) {
             // makes a click download rather than navigate.
             download={file.name}
           >
-            <Icon className="attachment-icon" name={iconFor(file.extension)} />
+            <AttachmentMark file={file} className="attachment-icon" />
             <span className="attachment-name">{file.name}</span>
             <span className="attachment-size">{formatBytes(file.size)}</span>
           </a>
@@ -69,7 +114,7 @@ export function AttachmentDrafts({ files, uploading, onRemove }) {
     <div className="attachment-drafts">
       {files.map((file) => (
         <span key={file.id} className="attachment-chip">
-          <Icon name={iconFor(file.extension)} />
+          <AttachmentMark file={file} />
           <span className="attachment-name">{file.name}</span>
           <span className="attachment-size">{formatBytes(file.size)}</span>
           <button

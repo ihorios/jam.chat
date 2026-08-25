@@ -2391,6 +2391,18 @@ body {
 
 .attachment-icon { flex: none; }
 
+/* An image attachment draws itself rather than its type.
+   Square and cropped, because a thumbnail that changed shape per photograph
+   would make every row in a conversation a different height. */
+.attachment-thumb {
+  width: 2.25rem;
+  height: 2.25rem;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  /* Behind a picture with transparency, and what is seen while one loads. */
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .attachment-name {
   flex: 1;
   min-width: 0;
@@ -2427,6 +2439,13 @@ body {
 .attachment-chip.pending {
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* Smaller in a chip than in a row: the composer is a strip, and a chip has to
+   sit on one line beside its name, its size and a remove button. */
+.attachment-chip .attachment-thumb {
+  width: 1.4rem;
+  height: 1.4rem;
 }
 
 .attachment-chip button {

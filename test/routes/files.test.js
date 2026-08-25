@@ -453,3 +453,41 @@ t.test('deleting an uploader leaves their files, ownerless', async (t) => {
   t.equal(content.statusCode, 200, 'and its object is still there to be read');
   t.equal(content.body, 'bytes', 'unchanged');
 });
+
+/*
+ * An image attachment is drawn rather than described: the messenger points an
+ * <img> at the same download route everything else uses
+ * (components/Attachments.jsx). Nothing about that route is special-cased for
+ * it, and this is what says so — the bytes come back intact and labelled, and
+ * the two headers that could have stopped it are the ones it survives.
+ */
+t.test('an image attachment can be drawn from the download route', async (t) => {
+  const { app, cookies } = await asAdmin(t);
+  const { png } = await import('../fixtures/images.js');
+  const bytes = png(64, 64);
+
+  const [, uploaded] = await app.inject({
+    method: 'POST',
+    url: '/api/files',
+    cookies,
+    ...upload([{ name: 'holiday.png', body: bytes, type: 'image/png' }]),
+  }).then((r) => [r.statusCode, r.json()]);
+  const file = uploaded.files[0];
+
+  const res = await app.inject({
+    method: 'GET', url: `/api/files/${file.id}/content`, cookies,
+  });
+
+  t.equal(res.statusCode, 200);
+  t.equal(res.headers['content-type'], 'image/png', 'labelled as what it is');
+  t.equal(
+    Buffer.compare(res.rawPayload, Buffer.from(bytes)), 0,
+    'and the bytes are the ones that were uploaded'
+  );
+
+  // Neither of these stops an <img>: Content-Disposition governs downloads and
+  // is ignored by an image element, and no-store means refetch rather than
+  // refuse. They are asserted so that a change to either is a deliberate one.
+  t.match(res.headers['content-disposition'], /^attachment;/, 'still a download to a click');
+  t.match(res.headers['cache-control'], /no-store/, 'and still never cached');
+});

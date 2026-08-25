@@ -105,6 +105,61 @@ t.test('a read can be narrowed to the caller’s own corner, but never widened',
   t.match(error.error, /not a scope/);
 });
 
+/*
+ * The chats page loads one conversation at a time, so the filter it does that
+ * with has to narrow *within* the caller's scope rather than around it.
+ */
+t.test('a conversation can be fetched on its own, and only if it is yours', async (t) => {
+  const { adminCall, member, outsider, shared, elsewhere } = await messengerFixture(t);
+
+  await adminCall('POST', '/api/user_messages', { owner: 1, group: shared.id, value: 'here' });
+  await adminCall('POST', '/api/user_messages', {
+    owner: outsider.id, group: elsewhere.id, value: 'not here',
+  });
+
+  const [status, one] = await member.call('GET', `/api/user_messages?group=${shared.id}`);
+  t.equal(status, 200);
+  t.equal(one.count, 1, 'one group’s messages, not every group’s');
+  t.equal(one.user_messages[0].value, 'here');
+
+  // The filter narrows; it never reaches past the scope that was already applied.
+  const [, theirs] = await member.call('GET', `/api/user_messages?group=${elsewhere.id}`);
+  t.equal(theirs.count, 0, 'asking for a group you are not in narrows to nothing');
+
+  const [bad] = await member.call('GET', '/api/user_messages?group=nonsense');
+  t.equal(bad, 400, 'and an id that is not one is a mistake, not a missing filter');
+});
+
+/*
+ * What the sidebar draws itself from once the messages are no longer loaded:
+ * the count, and the last line said in each group.
+ */
+t.test('unread carries a count and a preview for every group', async (t) => {
+  const { adminCall, member, shared } = await messengerFixture(t);
+
+  await adminCall('POST', '/api/user_messages', { owner: 1, group: shared.id, value: 'first' });
+  await adminCall('POST', '/api/user_messages', { owner: 1, group: shared.id, value: 'second' });
+
+  const [status, unread] = await member.call('GET', '/api/messenger/unread');
+  t.equal(status, 200);
+  t.equal(unread.groups[shared.id], 2, 'both count against them');
+  t.equal(unread.total, 2);
+  t.equal(unread.latest[shared.id].value, 'second', 'and the preview is the last one said');
+
+  const [, read] = await member.call('POST', '/api/messenger/read', { group: shared.id });
+  t.equal(read.groups[shared.id], 0, 'reading it clears the count');
+  t.equal(
+    read.latest[shared.id].value, 'second',
+    'but not the preview — the conversation still has a last line'
+  );
+
+  // Their own words are never news, but they are still the latest thing said.
+  await member.call('POST', '/api/user_messages', { group: shared.id, value: 'mine' });
+  const [, after] = await member.call('GET', '/api/messenger/unread');
+  t.equal(after.groups[shared.id], 0, 'writing does not make a conversation unread to its author');
+  t.equal(after.latest[shared.id].value, 'mine', 'and the preview follows whoever spoke last');
+});
+
 t.test('a member sees the groups they are in, and no others', async (t) => {
   const { adminCall, member, shared, elsewhere } = await messengerFixture(t);
 

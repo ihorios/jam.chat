@@ -84,6 +84,7 @@
     "callBusy": "Ви вже в розмові",
     "cannotRead": "Ви не можете читати повідомлення в цій групі.",
     "saySomething": "Повідомлень ще немає. Напишіть щось.",
+    "loadingThread": "Завантаження розмови…",
     "reply": "Відповісти",
     "replyingTo": "Відповідь для",
     "cancelReply": "Скасувати відповідь",
@@ -105,7 +106,10 @@
     "emptyGroup": "Порожня розмова",
     "andMorePeople_one": "{{names}} + {{count}} особа",
     "andMorePeople_few": "{{names}} + {{count}} особи",
-    "andMorePeople_many": "{{names}} + {{count}} осіб"
+    "andMorePeople_many": "{{names}} + {{count}} осіб",
+    "unreadCount_one": "{{count}} непрочитане повідомлення",
+    "unreadCount_few": "{{count}} непрочитаних повідомлення",
+    "unreadCount_many": "{{count}} непрочитаних повідомлень"
   },
   "auth": {
     "signIn": "Увійти",

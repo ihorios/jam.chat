@@ -41,6 +41,12 @@
   --accent-cyan: #38bdf8;
   --accent-purple: #818cf8;
   --accent-emerald: #34d399;
+  /*
+   * The unread badge. Darker than the red used for errors (#f87171) on purpose:
+   * this one carries white text at 0.7rem, and the lighter red only reaches
+   * about 4:1 against white — under the 4.5 small text wants. This is ~5.9.
+   */
+  --unread: #dc2626;
 
   --radius-lg: 16px;
   --radius-md: 12px;
@@ -1804,13 +1810,83 @@ body {
   color: var(--text-dim);
 }
 
+.chat-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .chat-preview {
   display: block;
+  flex: 1;
+  min-width: 0;
   font-size: 0.8rem;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── Unread ────────────────────────────────────────────────────────────────
+   A conversation with something new in it says so twice: the row is drawn
+   brighter, and the count sits at the end of it.
+
+   Two signals rather than one because they answer different questions from
+   different distances. The weight is what makes an unread conversation findable
+   in a glance down the list; the number is what says how much, and is only
+   worth reading once you have found it. Colour alone would carry neither to
+   somebody who cannot see it — hence the weight, and the label on the badge. */
+
+.chat-item.unread .chat-title {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.chat-item.unread .chat-preview {
+  color: var(--text-main);
+}
+
+.chat-item.unread .chat-time {
+  color: var(--accent-cyan);
+}
+
+.chat-badge {
+  flex: none;
+  /* A circle at one digit and a pill beyond it: `min-width` equal to the height
+     keeps 1–9 round, and the padding lets 99+ grow sideways rather than
+     spilling. A fixed square would clip the moment a conversation got busy. */
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  box-sizing: border-box;
+  border-radius: 999px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--unread);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  /* Digits of differing width would otherwise make the circle twitch as a
+     count climbs. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* It has just appeared, which is the moment worth noticing. Once. */
+.chat-badge {
+  animation: badge-in 0.18s ease-out;
+}
+
+@keyframes badge-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-badge { animation: none; }
 }
 
 .messenger-thread {

@@ -5,7 +5,13 @@ import { openSocket } from '../lib/socket';
 import { useAuth } from './auth';
 import { RealtimeContext } from './realtime';
 
-const NOTHING_UNREAD = { groups: {}, total: 0 };
+/*
+ * `latest` is the last thing said in each group, which the server sends on the
+ * same frame as the counts (server/realtime/unread.js). The sidebar draws its
+ * preview line from it — the messenger holds only the conversation it has open,
+ * so it has nothing of its own to derive one from for the rest.
+ */
+const NOTHING_UNREAD = { groups: {}, latest: {}, total: 0 };
 
 /**
  * One socket for the whole application, and the unread state that rides on it.
@@ -52,7 +58,11 @@ export function RealtimeProvider({ children }) {
       onStatus: setStatus,
       onEvent: (event) => {
         if (event.type === 'hello' || event.type === 'unread') {
-          setUnread({ groups: event.groups || {}, total: event.total || 0 });
+          setUnread({
+            groups: event.groups || {},
+            latest: event.latest || {},
+            total: event.total || 0,
+          });
         }
         for (const handler of handlersRef.current) handler(event);
       },
@@ -73,7 +83,9 @@ export function RealtimeProvider({ children }) {
 
     api('/api/messenger/unread')
       .then((data) => {
-        if (!cancelled) setUnread({ groups: data.groups, total: data.total });
+        if (!cancelled) {
+          setUnread({ groups: data.groups, latest: data.latest || {}, total: data.total });
+        }
       })
       .catch(() => {});
 
@@ -94,6 +106,8 @@ export function RealtimeProvider({ children }) {
       const current = prev.groups[groupId] || 0;
       if (current === 0) return prev;
       return {
+        // Spread, so clearing a count does not take the preview lines with it.
+        ...prev,
         groups: { ...prev.groups, [groupId]: 0 },
         total: Math.max(0, prev.total - current),
       };
@@ -103,7 +117,7 @@ export function RealtimeProvider({ children }) {
 
     try {
       const data = await api('/api/messenger/read', { method: 'POST', body: { group: groupId } });
-      setUnread({ groups: data.groups, total: data.total });
+      setUnread({ groups: data.groups, latest: data.latest || {}, total: data.total });
     } catch {
       // Not worth interrupting a reader over; the next hello restates it.
     }

@@ -48,6 +48,9 @@ export default function MessengerPage() {
   const [users, setUsers] = useState([]);
   const [messages, setMessages] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  // The conversation loads on its own now, so it has its own two states.
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -104,6 +107,7 @@ export default function MessengerPage() {
   const canWrite = can('user_messages:create');
   const canAttach = can('files:create');
   const canEdit = can('user_messages:update');
+  const canDelete = can('user_messages:delete');
 
   /*
    * `?scope=member` on both reads, and it is the whole of what makes this page
@@ -118,9 +122,12 @@ export default function MessengerPage() {
    * The server clamps rather than widens (routes/crud.js), so an account that
    * only holds the member- or own-scoped permission is unaffected by asking.
    */
-  const loadMessages = useCallback(async () => {
-    if (!canReadMessages) return;
-    const res = await api('/api/user_messages?scope=member');
+  const loadMessages = useCallback(async (groupId) => {
+    if (!canReadMessages || groupId === null || groupId === undefined) {
+      setMessages([]);
+      return;
+    }
+    const res = await api(`/api/user_messages?scope=member&group=${groupId}`);
     setMessages(res.user_messages);
   }, [canReadMessages]);
 
@@ -136,7 +143,6 @@ export default function MessengerPage() {
         if (cancelled) return;
         setGroups(groupsRes.user_groups);
         setUsers(usersRes.users);
-        await loadMessages();
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -145,7 +151,40 @@ export default function MessengerPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [canReadGroups, canReadUsers, loadMessages]);
+  }, [canReadGroups, canReadUsers]);
+
+  /*
+   * The conversation is fetched when one is opened, and not before.
+   *
+   * The sidebar needs no messages to draw itself — the unread frame carries the
+   * count and the last line for every group — so a visit costs one list of
+   * groups rather than every message in every one of them. Somebody in a dozen
+   * conversations used to download all twelve to look at one.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setMessages([]);
+
+    if (selectedId === null) return undefined;
+
+    setThreadError('');
+    setThreadLoading(true);
+    loadMessages(selectedId)
+      .catch((err) => { if (!cancelled) setThreadError(err.message); })
+      .finally(() => { if (!cancelled) setThreadLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [selectedId, loadMessages]);
+
+  /*
+   * The conversation being looked at, for the handlers below.
+   *
+   * A ref rather than the state itself: the subscription is registered once and
+   * must not be torn down and rebuilt every time somebody opens a different
+   * group — a frame arriving in the gap would be lost.
+   */
+  const selectedRef = useRef(null);
+  useEffect(() => { selectedRef.current = selectedId; }, [selectedId]);
 
   // Live messages. The server has already decided this socket may see
   // anything it pushes, so there is nothing to filter here — a frame is either
@@ -167,10 +206,13 @@ export default function MessengerPage() {
           ? prev.map((group) => (group.id === event.group.id ? event.group : group))
           : [...prev, event.group]
       ));
-      // Unconditionally rather than only for a group we did not already have:
-      // a state updater is no place for a side effect, and a membership change
-      // is rare enough that reading the conversation again costs nothing.
-      loadMessages().catch(() => {});
+      // Only the conversation on screen, and only because a membership change
+      // can bring messages with it — a group just joined arrives with
+      // everything already said in it. Every other group is left alone: its
+      // messages are not loaded until it is opened.
+      if (selectedRef.current === event.group.id) {
+        loadMessages(event.group.id).catch(() => {});
+      }
       return;
     }
 
@@ -192,6 +234,15 @@ export default function MessengerPage() {
     }
 
     if (event.type !== 'message') return;
+
+    /*
+     * Only the conversation on screen is held. A message for any other group is
+     * not dropped so much as already accounted for: the same write sends an
+     * unread frame, which is what moves that group's badge and its preview
+     * line, and the messages themselves are read when somebody opens it.
+     */
+    if (event.message.group !== selectedRef.current) return;
+
     setMessages((prev) => (
       prev.some((message) => message.id === event.message.id)
         ? prev.map((message) => (message.id === event.message.id ? event.message : message))
@@ -253,19 +304,28 @@ export default function MessengerPage() {
     });
   }, [currentUser, t]);
 
-  const messagesByGroup = useMemo(() => {
-    const grouped = new Map();
-    for (const message of messages) {
-      if (!grouped.has(message.group)) grouped.set(message.group, []);
-      grouped.get(message.group).push(message);
-    }
-    return grouped;
-  }, [messages]);
+  /*
+   * `messages` holds one conversation — the open one — so this is it.
+   *
+   * It used to be every message the reader could see, filtered down per group.
+   * Lazy loading means there is nothing to filter: what was fetched is what is
+   * being looked at.
+   */
+  const conversation = messages;
 
-  const conversation = useMemo(
-    () => (selectedId === null ? [] : messagesByGroup.get(selectedId) || []),
-    [messagesByGroup, selectedId]
-  );
+  /**
+   * The line under a group's name in the sidebar.
+   *
+   * For the open conversation it is whatever is at the bottom of it, which is
+   * what keeps it current the instant somebody sends something. For every other
+   * group it comes from the unread frame, because their messages are not
+   * loaded — and that frame arrives whenever anything is said, so the preview
+   * moves live without holding the conversation to derive it from.
+   */
+  const previewOf = useCallback((group) => {
+    if (group.id === selectedId) return conversation[conversation.length - 1] || null;
+    return unread.latest?.[group.id] || null;
+  }, [selectedId, conversation, unread.latest]);
 
   /**
    * The composer is as tall as what is in it.
@@ -607,7 +667,7 @@ export default function MessengerPage() {
       setAttachments([]);
       // The socket delivers this back to everyone including us, but a sender
       // should never be left waiting on the network to see their own words.
-      await loadMessages();
+      await loadMessages(selectedId);
     } catch (err) {
       setSendError(err.message);
     } finally {
@@ -618,7 +678,7 @@ export default function MessengerPage() {
   const handleDelete = async (message) => {
     try {
       await api(`/api/user_messages/${message.id}`, { method: 'DELETE' });
-      await loadMessages();
+      await loadMessages(selectedId);
     } catch (err) {
       setSendError(err.message);
     }
@@ -677,8 +737,7 @@ export default function MessengerPage() {
         ) : (
           <ul className="chat-list">
             {groups.map((group) => {
-              const thread = messagesByGroup.get(group.id) || [];
-              const last = thread[thread.length - 1];
+              const last = previewOf(group);
               const title = groupTitle(group);
               const pending = unread.groups?.[group.id] || 0;
 
@@ -709,8 +768,14 @@ export default function MessengerPage() {
                             : t('messenger.noMessagesYet')}
                         </span>
                         {pending > 0 && (
-                          <span className="chat-badge" aria-label={`${pending} new`}>
-                            {pending}
+                          /* Capped in the text and not in the count: the label
+                             a screen reader announces is the real number, and
+                             only the circle has to fit. */
+                          <span
+                            className="chat-badge"
+                            aria-label={t('messenger.unreadCount', { count: pending })}
+                          >
+                            {pending > 99 ? '99+' : pending}
                           </span>
                         )}
                       </span>
@@ -822,6 +887,14 @@ export default function MessengerPage() {
             <div className="thread-body">
               {!canReadMessages ? (
                 <p className="no-perm">{t('messenger.cannotRead')}</p>
+              ) : threadError ? (
+                <p className="modal-error">{threadError}</p>
+              ) : threadLoading ? (
+                /* Only while a conversation is actually being fetched, which is
+                   now a thing that happens: opening a group is a round trip.
+                   Without it the empty state flashes "say something" at a
+                   conversation that is merely still arriving. */
+                <p className="no-perm">{t('messenger.loadingThread')}</p>
               ) : conversation.length === 0 ? (
                 <p className="no-perm">{t('messenger.saySomething')}</p>
               ) : (
@@ -917,16 +990,27 @@ export default function MessengerPage() {
                               {t('messenger.reply')}
                             </button>
                           )}
-                          {/* Your own words only. An administrator who may
-                              rewrite anybody's does it from the dashboard,
-                              where the change is deliberate rather than a
-                              button beside a conversation. */}
+                          {/* Your own words only, both of them.
+
+                              `can()` answers whether a permission is held at
+                              any scope, so it is true for the
+                              `user_messages:delete:own` every ordinary account
+                              carries. Drawn from that alone, Delete appeared on
+                              everybody's messages and the server refused it on
+                              anybody else's — an offer that could not be taken
+                              up, which is worse than no offer.
+
+                              An administrator who may rewrite or remove
+                              anybody's does it from the dashboard, where the
+                              change is deliberate rather than a button beside a
+                              conversation. Same reason this screen reads as a
+                              member however much its reader may do. */}
                           {mine && canEdit && (
                             <button type="button" onClick={() => startEdit(message)}>
                               {t('common.edit')}
                             </button>
                           )}
-                          {can('user_messages:delete') && (
+                          {mine && canDelete && (
                             <button type="button" onClick={() => askToDeleteMessage(message)}>
                               {t('common.delete')}
                             </button>

@@ -81,6 +81,7 @@
     "callBusy": "You are already in a call",
     "cannotRead": "You cannot read messages in this group.",
     "saySomething": "No messages yet. Say something.",
+    "loadingThread": "Loading the conversation…",
     "reply": "Reply",
     "replyingTo": "Replying to",
     "cancelReply": "Cancel reply",
@@ -100,7 +101,9 @@
     "ownedByYou": "owned by you",
     "emptyGroup": "Empty conversation",
     "andMorePeople_one": "{{names}} + {{count}} person",
-    "andMorePeople_other": "{{names}} + {{count}} people"
+    "andMorePeople_other": "{{names}} + {{count}} people",
+    "unreadCount_one": "{{count}} unread message",
+    "unreadCount_other": "{{count}} unread messages"
   },
   "auth": {
     "signIn": "Sign in",

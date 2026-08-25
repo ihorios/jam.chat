@@ -120,6 +120,62 @@ async function syncColumns(model, present, log) {
 }
 
 /**
+ * Adds a payload column declared on a relation but missing from a link table
+ * that already exists.
+ *
+ * The counterpart of syncColumns for side tables. Always nullable: the rows are
+ * already there and have no value for it, which is also the right starting
+ * state — a membership nobody has read from yet has read nothing.
+ */
+async function syncRelationColumns(model, columns, log) {
+  for (const relation of Object.values(model.relations)) {
+    if (relation.kind !== 'manyToMany' || !relation.carriesPayload) continue;
+
+    const present = columns.get(relation.through) ?? new Set();
+    for (const field of Object.values(relation.columns)) {
+      if (present.has(field.column)) continue;
+      await query(`ALTER TABLE ${relation.through} ADD COLUMN ${field.column} ${field.sql}`);
+      log.info(`Added ${relation.through}.${field.column}.`);
+    }
+  }
+}
+
+/**
+ * Moves read position out of its own table and onto the membership it belongs
+ * to.
+ *
+ * How far somebody has read in a group is a fact about their membership, not
+ * about either end of it — so it lives on user_group_users, where the pair is
+ * already the primary key and where leaving takes it away without anybody
+ * having to remember to. user_group_reads was a table keeping that in step by
+ * hand, and could drift.
+ *
+ * Only ever acts while the old table is still there, so a boot after the first
+ * one does nothing. The join is the whole migration: a marker for a pair that
+ * is no longer a membership has nowhere to land and is dropped with the table,
+ * which is the correct outcome — it described a group the person had left.
+ */
+async function migrateReadMarkers(columns, log) {
+  if (!columns.has('user_group_reads')) return;
+
+  log.info('Moving read markers onto the memberships they belong to.');
+
+  const moved = await query(`
+    UPDATE user_group_users AS link
+       SET last_read_at = marker.last_read_at
+      FROM user_group_reads AS marker
+     WHERE marker.group_id = link.user_group_id
+       AND marker.user_id = link.user_id
+       AND link.last_read_at IS NULL
+  `);
+
+  await query('DROP TABLE user_group_reads');
+  log.info(
+    `Dropped user_group_reads (${moved.rowCount} marker(s) moved onto user_group_users).`
+  );
+}
+
+/**
  * Moves data off the pre-refactor schema, where a user carried a `role` string
  * and its own `permissions` array. Idempotent: it only acts while the legacy
  * columns are still present.
@@ -202,6 +258,7 @@ export async function syncSchema(log) {
     // Creating a table is a no-op when it already exists, so fields added to a
     // model definition later are reconciled here instead.
     await syncColumns(model, columns.get(model.table) ?? new Set(), log);
+    await syncRelationColumns(model, columns, log);
     await migratePermissionScope(model, columns, log);
 
     // Last for this model, so a column syncColumns has only just added is there
@@ -215,6 +272,8 @@ export async function syncSchema(log) {
     }
   }
 
+  // After the pass above, so the column the markers move into exists.
+  await migrateReadMarkers(columns, log);
   await migrateLegacyUserColumns(columns.get('users') ?? new Set(), log);
   // The finished state goes to stdout like the other boot lines; the migration
   // steps above stay on `log`, where their structure and timing are worth having.

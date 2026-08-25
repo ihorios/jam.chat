@@ -184,13 +184,6 @@ export default async function messengerRoutes(fastify) {
       ...(ownerLeft ? { owner: Math.min(...remaining.map((member) => member.id)) } : {}),
     });
 
-    // Their place in a conversation they are no longer in. Left behind, it
-    // would come back if they were ever invited again — silently marking
-    // everything said before today as already read.
-    const marker = (await fastify.models.user_group_reads.findAll({ owner: request.user.id }, 0))
-      .find((read) => read.group === group.id);
-    if (marker) await fastify.models.user_group_reads.remove(marker.id);
-
     // After the membership change, so the notice reaches the people still
     // there rather than the person it is about.
     const notice = await fastify.models.user_messages.create({

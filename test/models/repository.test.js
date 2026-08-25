@@ -12,8 +12,8 @@ t.test('a repository exists for every registered model', async (t) => {
   const repositories = freshRepositories();
   t.same(
     Object.keys(repositories).sort(),
-    ['files', 'roles', 'user_group_reads', 'user_groups', 'user_messages', 'users'],
-    'including the internal ones, which still need somewhere to be written'
+    ['files', 'roles', 'user_groups', 'user_messages', 'users'],
+    'one per registered model'
   );
   t.equal(repositories.users.model.name, 'users');
 });
@@ -419,8 +419,7 @@ t.test('findByIds only returns what exists', async (t) => {
  */
 t.test('deleting a row takes everything keyed to it', async (t) => {
   const {
-    users, user_groups: groups, user_messages: messages,
-    user_group_reads: reads, files,
+    users, user_groups: groups, user_messages: messages, files,
   } = repos();
 
   const author = await users.create({
@@ -448,8 +447,8 @@ t.test('deleting a row takes everything keyed to it', async (t) => {
   const outside = await messages.create({
     owner: author.id, group: elsewhere.id, value: 'somewhere else',
   });
-  await reads.create({
-    user: author.id, group: group.id, last_read_at: new Date(0).toISOString(),
+  await groups.writeLink('members', group.id, author.id, {
+    last_read_at: new Date(0).toISOString(),
   });
 
   t.equal((await messages.findAll()).length, 3);
@@ -461,13 +460,76 @@ t.test('deleting a row takes everything keyed to it', async (t) => {
     [outside.id],
     'and the messages in it, leaving the ones in other groups alone'
   );
-  t.same(await reads.findAll(), [], 'and the read markers for it');
+  t.same(
+    await groups.readLinks('members', { owner: group.id }),
+    [],
+    'and the memberships, which is where the read position lived'
+  );
   t.equal(
     await files.findById(file.id),
     null,
     'and the attachment on one of those messages, the message hook having run'
   );
   t.ok(await groups.findById(elsewhere.id), 'the other group is untouched');
+});
+
+/*
+ * The aggregate the unread count is built on.
+ *
+ * It exists because counting by reading is the wrong shape: tallying messages
+ * in JavaScript costs the length of the conversation per reader per message,
+ * which is what made a busy group slow to post into. Both drivers have to agree
+ * about it, so this asserts the answer rather than the query.
+ */
+t.test('countNewer summarises without reading the rows', async (t) => {
+  const { users, user_groups: groups, user_messages: messages } = repos();
+
+  const author = await users.create({
+    email: 'agg@example.com', first_name: 'Ag', last_name: 'Gregate', password: 'Passw0rd!',
+  });
+  const reader = await users.create({
+    email: 'reader@example.com', first_name: 'Read', last_name: 'Er', password: 'Passw0rd!',
+  });
+  const group = await groups.create({ owner: author.id, members: [author.id, reader.id] });
+  const quiet = await groups.create({ owner: author.id, members: [author.id, reader.id] });
+
+  await messages.create({ owner: author.id, group: group.id, value: 'one' });
+  const second = await messages.create({ owner: author.id, group: group.id, value: 'two' });
+  const own = await messages.create({ owner: reader.id, group: group.id, value: 'mine' });
+
+  const at = (id) => (rows) => rows.find((row) => row.id === id);
+
+  const all = await messages.countNewer(
+    'group',
+    [{ id: group.id, since: null }, { id: quiet.id, since: null }],
+    { notOwnedBy: reader.id }
+  );
+  t.equal(at(group.id)(all).newer, 2, 'never having looked, everything but their own counts');
+  t.equal(at(group.id)(all).latest, own.id, 'and the newest is the newest, whoever wrote it');
+
+  t.equal(at(quiet.id)(all).newer, 0, 'a group with nothing in it counts nothing');
+  t.equal(at(quiet.id)(all).latest, null, 'and has no last line');
+
+  const since = await messages.findById(second.id);
+  const after = await messages.countNewer(
+    'group',
+    [{ id: group.id, since: since.created_at }],
+    { notOwnedBy: reader.id }
+  );
+  t.equal(
+    at(group.id)(after).newer, 0,
+    'read up to the second, and only their own is newer — which never counts'
+  );
+
+  const everybody = await messages.countNewer('group', [{ id: group.id, since: null }]);
+  t.equal(at(group.id)(everybody).newer, 3, 'without an owner to exclude, all three count');
+
+  t.same(await messages.countNewer('group', []), [], 'nothing asked about, nothing answered');
+  t.rejects(
+    messages.countNewer('value', [{ id: group.id }]),
+    /reference field/,
+    'and it only groups by a foreign key'
+  );
 });
 
 t.test('a reference that is declared SET NULL is blanked, not followed', async (t) => {
@@ -567,8 +629,6 @@ t.test('every model declares the indexes its queries need', async (t) => {
   has('ON user_messages (group_id)');
   has('ON user_messages (owner_id)');
   has('ON user_messages (reply_to_id)');
-  has('ON user_group_reads (group_id)');
-  has('ON user_group_reads (user_id)');
   has('ON user_groups (owner_id)');
   has('ON files (owner_id)');
 

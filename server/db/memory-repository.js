@@ -13,6 +13,39 @@ export function createMemoryRepository(model, getRepo) {
   const rows = [];
   // relationName -> Map(ownerId -> values)
   const links = new Map(Object.keys(model.relations).map((name) => [name, new Map()]));
+
+  /*
+   * What a link row carries beyond the two keys, for the relations that carry
+   * anything: relationName -> Map("<owner>:<target>" -> { column: value }).
+   *
+   * Kept beside `links` rather than folded into it so that hydration, the
+   * membership filter and linkedTargets go on reading the plain list of ids
+   * they always did. Postgres puts these values in columns on the link table;
+   * here they are a second map keyed by the same pair.
+   */
+  const payloads = new Map(
+    Object.values(model.relations)
+      .filter((relation) => relation.carriesPayload)
+      .map((relation) => [relation.name, new Map()])
+  );
+
+  const pairKey = (owner, target) => `${Number(owner)}:${Number(target)}`;
+
+  /**
+   * Applies a new member list to a payload-carrying relation, keeping what the
+   * surviving pairs were holding — the counterpart of the reconciling branch
+   * in the Postgres driver's writeRelations, and for the same reason: a
+   * membership change must not reset everybody else's read position.
+   */
+  const reconcile = (relation, ownerId, values) => {
+    const carried = payloads.get(relation.name);
+    const kept = new Set(values.map(Number));
+
+    for (const key of [...carried.keys()]) {
+      const [owner, target] = key.split(':').map(Number);
+      if (owner === Number(ownerId) && !kept.has(target)) carried.delete(key);
+    }
+  };
   let nextId = 1;
 
   function assertUnique(input, ignoreId = null) {
@@ -154,8 +187,13 @@ export function createMemoryRepository(model, getRepo) {
   const repository = {
     model,
 
-    async findAll({ search, owner, member } = {}, depth = DEFAULT_DEPTH) {
+    async findAll({ search, owner, member, match } = {}, depth = DEFAULT_DEPTH) {
       let matched = rows;
+
+      // Narrowing by a foreign key; see the Postgres driver for what it is for.
+      for (const [column, value] of Object.entries(match || {})) {
+        matched = matched.filter((row) => Number(row[column]) === Number(value));
+      }
       if (search && model.searchable.length > 0) {
         const needle = search.toLowerCase();
         matched = matched.filter((row) =>
@@ -250,6 +288,92 @@ export function createMemoryRepository(model, getRepo) {
       return [...found];
     },
 
+    /** The link rows of a payload-carrying relation, by either end. */
+    async readLinks(relationName, { owner, target } = {}) {
+      const relation = model.relations[relationName];
+      if (relation?.kind !== 'manyToMany') {
+        throw new Error(`Model "${model.name}" has no many-to-many relation "${relationName}".`);
+      }
+
+      const carried = payloads.get(relationName);
+      const found = [];
+
+      for (const [ownerId, values] of links.get(relationName)) {
+        if (owner !== undefined && Number(ownerId) !== Number(owner)) continue;
+
+        for (const targetId of values) {
+          if (target !== undefined && Number(targetId) !== Number(target)) continue;
+
+          const held = carried?.get(pairKey(ownerId, targetId)) || {};
+          const link = { owner: Number(ownerId), target: Number(targetId) };
+          for (const field of Object.values(relation.columns)) {
+            const value = held[field.name] ?? null;
+            link[field.name] = value !== null && field.serialize ? field.serialize(value) : value;
+          }
+          found.push(link);
+        }
+      }
+      return found;
+    },
+
+    /** Writes payload onto one existing link row; false when there is none. */
+    async writeLink(relationName, owner, target, values = {}) {
+      const relation = model.relations[relationName];
+      if (relation?.kind !== 'manyToMany') {
+        throw new Error(`Model "${model.name}" has no many-to-many relation "${relationName}".`);
+      }
+
+      const held = links.get(relationName).get(Number(owner)) || [];
+      if (!held.some((id) => Number(id) === Number(target))) return false;
+
+      const carried = payloads.get(relationName);
+      const parsed = { ...(carried.get(pairKey(owner, target)) || {}) };
+
+      for (const [name, value] of Object.entries(values)) {
+        const field = relation.columns[name];
+        if (!field) {
+          throw new Error(`Relation "${relationName}" has no link column "${name}".`);
+        }
+        parsed[name] = value === null || value === '' ? null : await field.parse(value);
+      }
+
+      carried.set(pairKey(owner, target), parsed);
+      return true;
+    },
+
+    /** The same summary the Postgres driver aggregates; see it for what and why. */
+    async countNewer(fieldName, buckets, { notOwnedBy } = {}) {
+      const field = model.fields[fieldName];
+      if (field?.type !== 'reference') {
+        throw new Error(`Model "${model.name}" has no reference field "${fieldName}".`);
+      }
+      if (notOwnedBy !== undefined && !model.ownerColumn) {
+        throw new Error(`Model "${model.name}" has no owner to exclude.`);
+      }
+
+      return buckets.map((bucket) => {
+        const pointing = rows.filter(
+          (row) => Number(row[field.column]) === Number(bucket.id)
+        );
+        const since = bucket.since === null || bucket.since === undefined
+          ? null
+          : Date.parse(bucket.since);
+
+        let newer = 0;
+        let latest = null;
+        for (const row of pointing) {
+          if (latest === null || row.id > latest) latest = row.id;
+
+          if (notOwnedBy !== undefined
+            && Number(row[model.ownerColumn]) === Number(notOwnedBy)) continue;
+          if (since !== null && Date.parse(row.created_at) <= since) continue;
+          newer += 1;
+        }
+
+        return { id: Number(bucket.id), newer, latest };
+      });
+    },
+
     async create(input) {
       const { columns, relations } = await model.parseInput(input);
       assertUnique(columns);
@@ -265,6 +389,7 @@ export function createMemoryRepository(model, getRepo) {
       rows.push(row);
 
       for (const [name, values] of Object.entries(relations)) {
+        if (model.relations[name].carriesPayload) reconcile(model.relations[name], row.id, values);
         links.get(name).set(row.id, values);
       }
       return repository.findById(row.id);
@@ -280,6 +405,9 @@ export function createMemoryRepository(model, getRepo) {
 
       Object.assign(row, columns, { updated_at: new Date().toISOString() });
       for (const [name, values] of Object.entries(relations)) {
+        if (model.relations[name].carriesPayload) {
+          reconcile(model.relations[name], numericId, values);
+        }
         links.get(name).set(numericId, values);
       }
       return repository.findById(numericId);
@@ -297,6 +425,12 @@ export function createMemoryRepository(model, getRepo) {
 
       rows.splice(index, 1);
       for (const relationLinks of links.values()) relationLinks.delete(numericId);
+      // The link rows cascade, and what they carried goes with them.
+      for (const carried of payloads.values()) {
+        for (const key of [...carried.keys()]) {
+          if (Number(key.split(':')[0]) === numericId) carried.delete(key);
+        }
+      }
 
       // What the foreign keys would have done, before the model is told: a
       // hook tidying up should see the same world Postgres would have left it.

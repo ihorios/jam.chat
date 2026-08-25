@@ -110,14 +110,23 @@ async function realtimePlugin(fastify) {
 
     const counts = await presenceCounts();
 
+    // One read for everybody watching, as the message fan-out does: presence
+    // moves on every connect and disconnect, so this loop runs often.
+    let readers;
+    try {
+      readers = new Map(
+        (await fastify.models.users.findByIds(
+          [...new Set(watchers.map((entry) => Number(entry.userId)))]
+        )).map((user) => [Number(user.id), user])
+      );
+    } catch (err) {
+      return fastify.log.warn({ err }, 'Presence delivery failed');
+    }
+
     for (const entry of watchers) {
-      try {
-        const user = await fastify.models.users.findById(entry.userId);
-        if (!user?.is_active || !user.permissions.includes('users:read')) continue;
-        send(entry.socket, { type: 'presence', ...counts });
-      } catch (err) {
-        fastify.log.warn({ err }, 'Presence delivery failed');
-      }
+      const user = readers.get(Number(entry.userId));
+      if (!user?.is_active || !user.permissions.includes('users:read')) continue;
+      send(entry.socket, { type: 'presence', ...counts });
     }
   };
 
@@ -160,20 +169,18 @@ async function realtimePlugin(fastify) {
    *
    * Which is the rule the unread count has always used — see unreadFor, and its
    * note that an administrator reading every group is not thereby behind on
-   * every conversation. Delivery simply never caught up with it, so an
-   * administrator's chats page filled with strangers the moment anybody spoke.
+   * every conversation.
    *
-   * A read permission is still required: membership is what narrows the
-   * audience, not what grants it.
+   * `members` is handed in rather than looked up, because it is the same answer
+   * for every socket receiving one event: the people in the group it was said
+   * in. Asking per socket made a message cost a query per listener.
+   *
+   * A read permission is still required: membership narrows the audience, it
+   * does not grant it.
    */
-  const inTheConversation = async (user, model, row) => {
+  const inTheConversation = (user, model, members) => {
     if (!grantedScope(model, 'read', user.permissions)) return false;
-
-    const via = model.membershipVia;
-    // A model that cannot say who belongs to it falls back to the route's rule.
-    if (!via) return maySee(user, model, row);
-
-    return fastify.models[via.target].isMemberOf(row[via.name], user.id);
+    return members.has(Number(user.id));
   };
 
   /** The user ids in a hydrated group row's members, as numbers. */
@@ -265,14 +272,42 @@ async function realtimePlugin(fastify) {
 
     const model = fastify.models.user_messages.model;
 
-    for (const [, entry] of sockets) {
-      if (entry.userId === null) continue;
+    const listening = [...sockets.values()].filter((entry) => entry.userId !== null);
+    if (listening.length === 0) return;
 
+    /*
+     * The two things every socket in this loop would otherwise ask for itself,
+     * asked once for the event.
+     *
+     * Who is in the conversation is the same answer for all of them — it is a
+     * fact about the group, not about the listener — and the people behind the
+     * sockets are read in one go, so somebody with three tabs open is looked up
+     * once rather than three times. Each of those lookups hydrates their roles
+     * to reach their permissions, so it was never a cheap thing to repeat.
+     *
+     * Still read per event rather than cached: permissions and membership can
+     * change between one message and the next, and a stale copy would leak a
+     * conversation.
+     */
+    const via = model.membershipVia;
+    const groupsRepo = fastify.models[via.target];
+    const membership = groupsRepo.model.membershipRelation;
+
+    const members = new Set(
+      (await groupsRepo.readLinks(membership.name, { owner: Number(event.row[via.name]) }))
+        .map((link) => Number(link.target))
+    );
+
+    const readers = new Map(
+      (await fastify.models.users.findByIds(
+        [...new Set(listening.map((entry) => Number(entry.userId)))]
+      )).map((user) => [Number(user.id), user])
+    );
+
+    for (const entry of listening) {
       try {
-        // Read fresh: permissions and membership may have changed since the
-        // socket opened, and a stale copy would leak a conversation.
-        const user = await fastify.models.users.findById(entry.userId);
-        if (!user?.is_active || !(await inTheConversation(user, model, event.row))) continue;
+        const user = readers.get(Number(entry.userId));
+        if (!user?.is_active || !inTheConversation(user, model, members)) continue;
 
         if (event.type === 'deleted') {
           send(entry.socket, {

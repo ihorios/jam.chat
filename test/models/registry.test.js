@@ -17,9 +17,9 @@ import { ValidationError } from '../../server/db/models/fields.js';
 t.test('every model file in server/db/models is auto-registered', async (t) => {
   t.same(
     Object.keys(models).sort(),
-    ['files', 'roles', 'user_group_reads', 'user_groups', 'user_messages', 'users']
+    ['files', 'roles', 'user_groups', 'user_messages', 'users']
   );
-  t.equal(modelList.length, 6);
+  t.equal(modelList.length, 5);
   t.ok(modelList.every((model) => model instanceof Model), 'only models are picked up');
   t.equal(getModel('users').name, 'users');
   t.throws(() => getModel('ghosts'), /Unknown model "ghosts"/);
@@ -28,7 +28,7 @@ t.test('every model file in server/db/models is auto-registered', async (t) => {
 t.test('models are ordered so that requirements come first', async (t) => {
   t.same(
     modelList.map((model) => model.name),
-    ['roles', 'users', 'files', 'user_groups', 'user_group_reads', 'user_messages'],
+    ['roles', 'users', 'files', 'user_groups', 'user_messages'],
     'roles before users (user_roles), then the models keyed into those'
   );
 
@@ -37,7 +37,6 @@ t.test('models are ordered so that requirements come first', async (t) => {
   t.same(getModel('files').requires, ['users']);
   t.same(getModel('user_groups').requires, ['users']);
   t.same(getModel('user_messages').requires, ['users', 'user_groups', 'files']);
-  t.same(getModel('user_group_reads').requires, ['users', 'user_groups']);
 
   for (const model of modelList) {
     const position = modelList.indexOf(model);
@@ -78,9 +77,17 @@ t.test('the permission catalog is the union of what the models declare', async (
   t.ok(files.permissions().includes('files:create:own'), 'at both scopes');
   t.same(files.scopesFor('create'), ['any', 'own'], 'so a guard can resolve it');
   t.same(
-    getModel('user_group_reads').permissions(),
-    [],
-    'an internal table grants nothing, however it is owned'
+    getModel('user_groups').relations.members.columns.last_read_at.column,
+    'last_read_at',
+    'a relation may carry a column of its own, and it is a real field'
+  );
+  t.ok(
+    getModel('user_groups').relations.members.carriesPayload,
+    'which is what makes it reconciled rather than replaced'
+  );
+  t.notOk(
+    getModel('users').relations.roles.carriesPayload,
+    'a relation holding nothing but its keys is left alone'
   );
 
   t.ok(isValidPermission('users:read'));
@@ -151,8 +158,8 @@ t.test('the catalog is grouped for the admin UI', async (t) => {
     'a model granting nothing is left out of the matrix entirely'
   );
   t.notOk(
-    grouped.some((entry) => entry.model === 'user_group_reads'),
-    'read markers are bookkeeping, not something to administer'
+    grouped.some((entry) => entry.permissions.length === 0),
+    'a model granting nothing never reaches the matrix'
   );
 
   for (const entry of grouped) {

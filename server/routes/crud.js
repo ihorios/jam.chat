@@ -63,6 +63,41 @@ export function crudRoutes(model) {
       return SCOPES.indexOf(asked) > SCOPES.indexOf(request.scope) ? asked : request.scope;
     };
 
+    /**
+     * Foreign-key filters taken from the query string: `?group=5` on a model
+     * with a `group` reference narrows the list to that row's children.
+     *
+     * Only reference fields, and only ones this model declares — a query
+     * parameter naming anything else is ignored rather than refused, since
+     * `?search=` and `?scope=` arrive the same way and a client is entitled to
+     * send its own. What it can never do is widen: the filter is an extra
+     * `AND` on top of whatever the caller's scope already restricted them to,
+     * so asking for a group they are not in narrows to nothing.
+     *
+     * This is what makes the messenger's lazy load possible — one conversation
+     * at a time, rather than every message the caller may read on every visit.
+     */
+    const referenceFilters = (request) => {
+      const match = {};
+
+      for (const field of Object.values(model.fields)) {
+        if (field.type !== 'reference') continue;
+
+        const raw = request.query?.[field.name];
+        if (raw === undefined || raw === null || raw === '') continue;
+
+        const id = Number.parseInt(raw, 10);
+        if (Number.isNaN(id)) {
+          const error = new Error(`"${raw}" is not a ${field.label.toLowerCase()} id.`);
+          error.statusCode = 400;
+          throw error;
+        }
+        match[field.column] = id;
+      }
+
+      return match;
+    };
+
     /** The row, or nothing at all if this request has no business with it. */
     const findInScope = async (request, scope = request.scope) => {
       const row = await repository.findById(request.params.id);
@@ -176,6 +211,7 @@ export function crudRoutes(model) {
         const scope = readScope(request);
         const rows = await repository.findAll({
           search: request.query.search,
+          match: referenceFilters(request),
           ...(scope === 'own' ? { owner: request.user.id } : {}),
           ...(scope === 'member' ? { member: request.user.id } : {}),
         });

@@ -59,9 +59,17 @@ leave whenever you like. Leaving never destroys a group somebody is still in; th
 owner walking out hands it to a remaining member, and the last member left can
 delete it deliberately. Departures are announced in the conversation itself.
 
-**Messages** carry replies, edits, emoji and up to three attachments each.
-Attachments are read through the server, never from the bucket directly, so
-leaving a group ends access to what was said in it.
+**Messages** carry replies, edits, emoji and up to three attachments each. You
+may edit and delete your own and nobody else's — an administrator who may touch
+anybody's does it from the dashboard, deliberately, rather than from a button
+beside a conversation. Attachments are read through the server, never from the
+bucket directly, so leaving a group ends access to what was said in it.
+
+**A conversation loads when you open it.** The sidebar draws itself from the
+unread frame alone — a count and a last line per group — so visiting the
+messenger costs one list of groups rather than every message in every one of
+them. A group with something new in it is drawn brighter and carries a red
+count, which clears the moment it is opened.
 
 **Voice calls** over WebRTC, signalled on the same socket the messages use. One
 press rings every open tab of every member.
@@ -91,9 +99,11 @@ edit anywhere:
 - a repository on both drivers
 - a tab in the dashboard, with a form built from its fields
 
-There are six: `users`, `roles`, `files`, `user_groups`, `user_messages` and
-`user_group_reads` — the last being internal bookkeeping, which it declares by
-publishing no actions, and so gets no routes and no permissions.
+There are five: `users`, `roles`, `files`, `user_groups` and `user_messages`.
+
+A relation may also carry columns of its own — data belonging to the *pair*
+rather than to either end of it. How far somebody has read in a group is the one
+today, and it lives on `user_group_users` beside the membership it describes.
 
 ### Permissions have scope
 
@@ -161,6 +171,7 @@ test/                   # 37 files, run by test/run.js on plain node
 | :--- | :--- |
 | `POST /api/auth/login`, `/register`, `/google`, `/logout` · `GET /api/auth/me` | sessions |
 | `GET/POST/PUT/DELETE /api/<model>` | generated per model |
+| `?search=` · `?scope=` · `?<reference>=` | narrow a list: by text, to your own corner, or to one parent row |
 | `POST /api/messenger/groups/:id/invite` · `/leave` | the two changes that are not CRUD |
 | `GET /api/messenger/unread` · `POST /api/messenger/read` | what is new |
 | `POST /api/files` · `GET /api/files/:id/content` | upload and download |

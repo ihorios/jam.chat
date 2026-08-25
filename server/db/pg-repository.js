@@ -83,6 +83,32 @@ export function createPgRepository(model, getRepo) {
     for (const [name, values] of Object.entries(relations)) {
       const relation = model.relations[name];
 
+      /*
+       * A relation whose link rows carry data of their own is reconciled
+       * rather than replaced: the rows that survive a membership change keep
+       * what they were holding. Replacing them wholesale — which is what every
+       * other relation wants, since its rows hold nothing but the two keys —
+       * would reset every member's read position on every invitation.
+       */
+      if (relation.carriesPayload) {
+        await query(
+          `DELETE FROM ${relation.through}
+            WHERE ${relation.localKey} = $1 AND NOT (${relation.targetKey} = ANY($2::int[]))`,
+          [id, values],
+          client
+        );
+        if (values.length > 0) {
+          await query(
+            `INSERT INTO ${relation.through} (${relation.localKey}, ${relation.targetKey})
+             SELECT $1::int, UNNEST($2::int[])
+             ON CONFLICT DO NOTHING`,
+            [id, values],
+            client
+          );
+        }
+        continue;
+      }
+
       // Relations are replaced wholesale, so a submitted list is authoritative.
       await query(`DELETE FROM ${relation.through} WHERE ${relation.localKey} = $1`, [id], client);
       if (values.length === 0) continue;
@@ -147,9 +173,25 @@ export function createPgRepository(model, getRepo) {
      * permissions are applied. Only a model declaring the one it is asked for
      * can answer.
      */
-    async findAll({ search, owner, member } = {}, depth = DEFAULT_DEPTH) {
+    async findAll({ search, owner, member, match } = {}, depth = DEFAULT_DEPTH) {
       const params = [];
       const clauses = [];
+
+      /*
+       * Narrowing by a foreign key — the conversation in one group rather than
+       * every conversation the caller may read. Keyed by column, because
+       * deciding which columns may be filtered on is the route's business and
+       * this is only the query.
+       *
+       * Composed with the scope filters below rather than replacing them: a
+       * member asking for one group's messages still gets only the ones they
+       * were entitled to, so a group id they are not in narrows to nothing
+       * rather than opening anything.
+       */
+      for (const [column, value] of Object.entries(match || {})) {
+        params.push(value);
+        clauses.push(`${column} = $${params.length}`);
+      }
 
       if (search && model.searchable.length > 0) {
         params.push(`%${search}%`);
@@ -268,6 +310,142 @@ export function createPgRepository(model, getRepo) {
         [ids]
       );
       return res.rows.map((row) => row.id);
+    },
+
+    /**
+     * The link rows of a payload-carrying relation, by either end.
+     *
+     * The one thing hydration cannot give you: a link row read from the
+     * *target* side. `findAll({ member })` answers "which groups is this user
+     * in"; this answers it and hands back what each of those memberships is
+     * carrying, in the same query — which is how the unread count stopped
+     * being three reads and a scan.
+     */
+    async readLinks(relationName, { owner, target } = {}) {
+      const relation = model.relations[relationName];
+      if (relation?.kind !== 'manyToMany') {
+        throw new Error(`Model "${model.name}" has no many-to-many relation "${relationName}".`);
+      }
+
+      const payload = Object.values(relation.columns);
+      const select = [
+        `${relation.localKey} AS owner`,
+        `${relation.targetKey} AS target`,
+        ...payload.map((field) => `${field.column} AS "${field.name}"`),
+      ].join(', ');
+
+      const params = [];
+      const clauses = [];
+      if (owner !== undefined) {
+        params.push(owner);
+        clauses.push(`${relation.localKey} = $${params.length}`);
+      }
+      if (target !== undefined) {
+        params.push(target);
+        clauses.push(`${relation.targetKey} = $${params.length}`);
+      }
+
+      const res = await query(
+        `SELECT ${select} FROM ${relation.through}`
+        + (clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : ''),
+        params
+      );
+
+      for (const row of res.rows) {
+        for (const field of payload) {
+          if (field.serialize) row[field.name] = field.serialize(row[field.name]);
+        }
+      }
+      return res.rows;
+    },
+
+    /**
+     * Writes payload onto one existing link row.
+     *
+     * False when there is no such row, which is the membership check falling
+     * out of the write itself: marking a group read that you are not in is not
+     * refused so much as impossible, and costs no extra query to establish.
+     * It never creates the link — joining is a membership change, and this is
+     * not one.
+     */
+    async writeLink(relationName, owner, target, values = {}) {
+      const relation = model.relations[relationName];
+      if (relation?.kind !== 'manyToMany') {
+        throw new Error(`Model "${model.name}" has no many-to-many relation "${relationName}".`);
+      }
+
+      const params = [];
+      const assignments = [];
+      for (const [name, value] of Object.entries(values)) {
+        const field = relation.columns[name];
+        if (!field) {
+          throw new Error(`Relation "${relationName}" has no link column "${name}".`);
+        }
+        params.push(value === null || value === '' ? null : await field.parse(value));
+        assignments.push(`${field.column} = $${params.length}`);
+      }
+      if (assignments.length === 0) return false;
+
+      params.push(owner, target);
+      const res = await query(
+        `UPDATE ${relation.through} SET ${assignments.join(', ')}
+          WHERE ${relation.localKey} = $${params.length - 1}
+            AND ${relation.targetKey} = $${params.length}`,
+        params
+      );
+      return res.rowCount > 0;
+    },
+
+    /**
+     * For each of `buckets`, how many rows point at it that are newer than its
+     * `since` and were not written by `notOwnedBy` — and the id of the newest
+     * row pointing at it, whoever wrote that one.
+     *
+     * An aggregate, and that is the whole point of it. Counting unread by
+     * reading the messages and tallying them in JavaScript costs the length of
+     * the conversation *per reader, per message* — a group with a thousand
+     * messages in it and three people listening read three thousand rows every
+     * time anybody said anything. This reads one row per group.
+     *
+     * `buckets` carries a cutoff per bucket rather than one for all of them,
+     * because each reader is at a different place in each conversation. A
+     * `since` of null means they have never looked, so everything counts.
+     */
+    async countNewer(fieldName, buckets, { notOwnedBy } = {}) {
+      const field = model.fields[fieldName];
+      if (field?.type !== 'reference') {
+        throw new Error(`Model "${model.name}" has no reference field "${fieldName}".`);
+      }
+      if (buckets.length === 0) return [];
+      if (notOwnedBy !== undefined && !model.ownerColumn) {
+        throw new Error(`Model "${model.name}" has no owner to exclude.`);
+      }
+
+      const res = await query(
+        `WITH bucket(id, since) AS (
+           SELECT * FROM UNNEST($1::int[], $2::timestamptz[])
+         )
+         SELECT bucket.id,
+                count(row.id) FILTER (
+                  WHERE ($3::int IS NULL OR row.${model.ownerColumn} <> $3::int)
+                    AND (bucket.since IS NULL OR row.created_at > bucket.since)
+                ) AS newer,
+                max(row.id) AS latest
+           FROM bucket
+           LEFT JOIN ${model.table} AS row ON row.${field.column} = bucket.id
+          GROUP BY bucket.id`,
+        [
+          buckets.map((bucket) => Number(bucket.id)),
+          buckets.map((bucket) => bucket.since ?? null),
+          notOwnedBy ?? null,
+        ]
+      );
+
+      return res.rows.map((row) => ({
+        id: Number(row.id),
+        newer: Number(row.newer),
+        latest: row.latest === null ? null : Number(row.latest),
+      }));
     },
 
     async create(input) {

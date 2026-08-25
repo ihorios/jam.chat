@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import t from 'tap';
 
 import { buildTestApp } from '../helper.js';
@@ -68,4 +71,47 @@ t.test('what counts as administrative', async (t) => {
     true,
     'a read-only auditor of somebody else’s files belongs there too'
   );
+});
+
+/**
+ * Buttons that could never be pressed.
+ *
+ * `can()` answers whether a permission is held at *any* scope, so it is true of
+ * the `user_messages:update:own` and `:delete:own` every ordinary account
+ * carries — which makes it the wrong thing to draw a per-message button from on
+ * its own. Delete was drawn from it alone and so appeared on everybody's
+ * messages, where the server answered 404 because the row was not theirs.
+ *
+ * The server is not what this guards; it was always right, and
+ * routes/membership.test.js says so. What it guards is the offer: a control
+ * that cannot do what it says is worse than no control, and the mistake is one
+ * character wide and invisible in review.
+ *
+ * Read out of the source because the suite has no way to render a component —
+ * crude, and still the difference between catching this and not.
+ */
+t.test('the messenger offers edit and delete on your own messages only', async (t) => {
+  const source = fs.readFileSync(
+    path.join(import.meta.dirname, '..', '..', 'src', 'pages', 'MessengerPage.jsx'),
+    'utf8'
+  );
+
+  // Comments and whitespace collapsed away, so the guard reads as one line
+  // whatever it happens to be wrapped to.
+  const flat = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ');
+
+  for (const [action, handler] of [['edit', 'startEdit'], ['delete', 'askToDeleteMessage']]) {
+    const at = flat.indexOf(handler + '(message)');
+    t.ok(at > 0, 'the messenger has a ' + action + ' control');
+
+    // What stands in front of it: far enough back to reach past the button
+    // element to the condition deciding whether it is drawn at all.
+    const guard = flat.slice(Math.max(0, at - 120), at);
+    t.match(
+      guard,
+      /mine &&/,
+      'and ' + action + ' is offered on your own messages only, '
+      + 'rather than wherever the permission happens to be held'
+    );
+  }
 });

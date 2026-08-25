@@ -41,6 +41,24 @@ class UserGroups extends Model {
           target: 'users',
           through: 'user_group_users',
           privileged: true,
+          /*
+           * How far this member has read in this group.
+           *
+           * On the link row because that is whose fact it is: not the group's,
+           * not the user's, but their membership's. Which buys three things a
+           * table of its own could not. The pair is the primary key, so a
+           * second marker for the same person in the same group cannot exist.
+           * Leaving takes it away, because the link row goes — no hand-written
+           * cleanup, and no marker waiting to come back and mark a conversation
+           * read that nobody has read. And reading it is one indexed lookup
+           * rather than a scan for a matching row.
+           *
+           * Null until they have looked at all: everything said in a group you
+           * have never opened is new, which is what unreadFor relies on.
+           */
+          columns: {
+            last_read_at: { type: 'timestamp', label: 'Last Read' },
+          },
         },
       },
     });

@@ -58,6 +58,64 @@ async function groupWith(person, ...invitees) {
 
 const idsOf = (group) => group.members.map((member) => member.id).sort((a, b) => a - b);
 
+/*
+ * Read position lives on the membership, which is the whole reason it was moved
+ * there: it is a fact about the pair, not about either end of it.
+ *
+ * The first of these is the bug the move exists to make impossible. Membership
+ * used to be rewritten wholesale on every change, so anything kept on the link
+ * row was erased by the next invitation — everybody in a conversation would
+ * have found it unread again the moment somebody new joined.
+ */
+t.test('an invitation does not reset what everybody else had read', async (t) => {
+  const { app, alice, bob, carol } = await cast(t);
+
+  const [, created] = await alice.call('POST', '/api/user_groups', { owner: alice.id });
+  const group = created.user_group;
+  await alice.call('POST', `/api/messenger/groups/${group.id}/invite`, { email: bob.email });
+
+  await bob.call('POST', '/api/user_messages', { group: group.id, value: 'first' });
+  const [read] = await alice.call('POST', '/api/messenger/read', { group: group.id });
+  t.equal(read, 200, 'alice reads the conversation');
+
+  const [, before] = await alice.call('GET', '/api/messenger/unread');
+  t.equal(before.groups[group.id], 0, 'and has nothing waiting');
+
+  // The membership rows are rewritten here. They must not be wiped.
+  await alice.call('POST', `/api/messenger/groups/${group.id}/invite`, { email: carol.email });
+
+  const [, after] = await alice.call('GET', '/api/messenger/unread');
+  t.equal(after.groups[group.id], 0, 'and still has nothing waiting afterwards');
+
+  const [, carolsView] = await carol.call('GET', '/api/messenger/unread');
+  t.equal(
+    carolsView.groups[group.id], 1,
+    'while the new arrival finds the conversation waiting for them'
+  );
+
+  t.equal(app.models.user_group_reads, undefined, 'and there is no table of markers left');
+});
+
+t.test('leaving takes the read position with it', async (t) => {
+  const { alice, bob } = await cast(t);
+
+  const [, created] = await alice.call('POST', '/api/user_groups', { owner: alice.id });
+  const group = created.user_group;
+  await alice.call('POST', `/api/messenger/groups/${group.id}/invite`, { email: bob.email });
+  await alice.call('POST', '/api/user_messages', { group: group.id, value: 'said early' });
+  await bob.call('POST', '/api/messenger/read', { group: group.id });
+
+  await bob.call('POST', `/api/messenger/groups/${group.id}/leave`);
+  await alice.call('POST', `/api/messenger/groups/${group.id}/invite`, { email: bob.email });
+
+  // Nothing was cleaned up by hand: the link row went, and took the marker.
+  const [, unread] = await bob.call('GET', '/api/messenger/unread');
+  t.ok(
+    unread.groups[group.id] >= 1,
+    'coming back, the conversation is new again rather than silently already read'
+  );
+});
+
 t.test('a group starts with exactly one person in it: whoever made it', async (t) => {
   const { alice, bob } = await cast(t);
 

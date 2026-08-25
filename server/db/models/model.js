@@ -24,6 +24,32 @@ const RELATION_TYPES = {
   /** e.g. users <-> roles through user_roles. */
   manyToMany(name, def, modelName) {
     if (!def.target) throw new Error(`Relation "${name}" requires a \`target\` model.`);
+
+    /*
+     * Columns the link row carries beyond the two keys — data belonging to the
+     * *pair* rather than to either end of it. How far a user has read in a
+     * group is the one today: it is neither a fact about the user nor about the
+     * group but about their membership, and keeping it in a table of its own
+     * meant keeping the two in step by hand.
+     *
+     * Declaring any of these changes how the relation is written. A relation
+     * without them is replaced wholesale on every write, which is right when
+     * the link rows hold nothing worth keeping — and is exactly what would
+     * erase this, since every invitation rewrites the whole member list. A
+     * relation that carries payload is reconciled instead: see writeRelations
+     * in either repository.
+     */
+    const columns = {};
+    for (const [columnName, raw] of Object.entries(def.columns || {})) {
+      const field = defineField(`${modelName}.${name}`, columnName, raw);
+      if (field.type === 'reference') {
+        throw new Error(
+          `Relation "${name}": a link column cannot be a reference (${columnName}).`
+        );
+      }
+      columns[columnName] = field;
+    }
+
     return {
       kind: 'manyToMany',
       name,
@@ -32,6 +58,9 @@ const RELATION_TYPES = {
       localKey: def.localKey || `${singular(modelName)}_id`,
       targetKey: def.targetKey || `${singular(def.target)}_id`,
       privileged: Boolean(def.privileged),
+      columns: Object.freeze(columns),
+      /** Reconciled rather than replaced, so what the rows carry survives. */
+      carriesPayload: Object.keys(columns).length > 0,
     };
   },
   /** A set of `<model>:<action>` grants, stored as (owner_id, model, action). */
@@ -370,10 +399,19 @@ export class Model {
   /** CREATE TABLE for one relation's side table. */
   relationDdl(relation) {
     if (relation.kind === 'manyToMany') {
+      // One line per payload column, each already trailing its comma, so the
+      // primary key below reads the same whether there are any or none.
+      const payload = Object.values(relation.columns || {})
+        .map((field) => {
+          const clause = defaultClause(field);
+          return `  ${field.column} ${field.sql}${clause ? ` ${clause}` : ''},\n`;
+        })
+        .join('');
+
       return `CREATE TABLE IF NOT EXISTS ${relation.through} (
   ${relation.localKey} INTEGER NOT NULL REFERENCES ${this.table}(id) ON DELETE CASCADE,
   ${relation.targetKey} INTEGER NOT NULL REFERENCES ${this.targetTable(relation.target)}(id) ON DELETE CASCADE,
-  PRIMARY KEY (${relation.localKey}, ${relation.targetKey})
+${payload}  PRIMARY KEY (${relation.localKey}, ${relation.targetKey})
 )`;
     }
 

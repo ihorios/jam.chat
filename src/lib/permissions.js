@@ -40,6 +40,33 @@ export function scopeOf(permissions, permission) {
 }
 
 /**
+ * Whether a granted scope reaches one particular row.
+ *
+ * `scopeOf` answers *what* somebody holds; this answers whether it covers the
+ * thing in front of them. Both halves are needed to decide whether to draw a
+ * control, and drawing it from the permission alone is the mistake worth naming:
+ * `can()` is true for the `:own` form every ordinary account carries, so a
+ * Delete drawn from that appeared on everybody's messages and the server
+ * answered 404 on anybody else's. A control that cannot do what it says is
+ * worse than no control.
+ *
+ * The caller says what the row is, because only it knows: `own` is whether they
+ * wrote it, `member` whether they belong to whatever it hangs off. A scope of
+ * `member` on a message means "anything said in a group you are in" — which is
+ * not the same as "anything on this screen", even here.
+ *
+ * This decides what is *offered*, never what is allowed. The server resolves
+ * the same scope for itself on every request (server/plugins/auth.js), and a
+ * button that should not have been drawn still fails there.
+ */
+export function scopeReaches(scope, { own = false, member = false } = {}) {
+  if (scope === 'any') return true;
+  if (scope === 'member') return Boolean(member);
+  if (scope === 'own') return Boolean(own);
+  return false;
+}
+
+/**
  * Whether a set of permissions reaches past the holder's own corner of the app.
  *
  * That is the line the dashboard sits on: it exists to manage rows somebody else

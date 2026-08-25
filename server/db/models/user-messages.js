@@ -1,3 +1,4 @@
+import { parsePermission } from './catalog.js';
 import { Model } from './model.js';
 
 /**
@@ -50,7 +51,22 @@ async function removeOrphanedAttachments(row, getRepo) {
   const files = getRepo('files');
   for (const attachment of attachments) {
     if (stillAttached.has(attachment.id)) continue;
-    await files.remove(attachment.id);
+
+    /*
+     * Deleting a file now refuses if its object cannot be removed, and this
+     * runs after the message row has already gone — so a throw here would
+     * report a delete that did happen as one that did not.
+     *
+     * Left alone instead, which is not the same as forgotten: the row survives
+     * attached to nothing, which is precisely what the sweep in
+     * plugins/files.js collects. A bucket having a bad minute costs an hour's
+     * delay rather than an orphaned object.
+     */
+    try {
+      await files.remove(attachment.id);
+    } catch {
+      // The sweep will come back to it.
+    }
   }
 }
 
@@ -94,6 +110,32 @@ class UserMessages extends Model {
         files: { type: 'manyToMany', target: 'files', through: 'user_message_files' },
       },
       searchable: ['value'],
+    });
+  }
+
+  /**
+   * Membership grants reading and writing, and deliberately not editing or
+   * deleting.
+   *
+   * `membership: { via: 'group' }` above makes `:member` answerable for this
+   * model, and the base class would generate it for all four actions. Two of
+   * those should not exist: `update:member` and `delete:member` mean "anybody
+   * in a group may rewrite or remove anybody else's words in it", which is not
+   * a thing to be granted so much as a thing to be unable to grant. Correcting
+   * or withdrawing what *you* said is `:own`, and moderating a conversation you
+   * are merely part of is not a middle ground worth having — the unscoped
+   * permission is what an administrator holds, and it is deliberately not
+   * something membership can confer.
+   *
+   * Removed here rather than left ungranted, because a permission that exists
+   * is a checkbox on the roles screen, and a checkbox is an invitation. The
+   * catalogue reads this method rather than the action list, so the row simply
+   * offers Read and Create at member scope and nothing else.
+   */
+  permissions() {
+    return super.permissions().filter((permission) => {
+      const { action, scope } = parsePermission(permission);
+      return !(scope === 'member' && (action === 'update' || action === 'delete'));
     });
   }
 

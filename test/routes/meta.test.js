@@ -26,14 +26,14 @@ t.test('GET /api/permissions publishes the generated catalog', async (t) => {
     'files:read', 'files:read:own',
     'files:update', 'files:update:own',
     'roles:create', 'roles:delete', 'roles:read', 'roles:update',
-    'user_groups:create', 'user_groups:create:member', 'user_groups:create:own',
-    'user_groups:delete', 'user_groups:delete:member', 'user_groups:delete:own',
+    'user_groups:create', 'user_groups:create:own',
+    'user_groups:delete', 'user_groups:delete:own',
     'user_groups:read', 'user_groups:read:member', 'user_groups:read:own',
-    'user_groups:update', 'user_groups:update:member', 'user_groups:update:own',
+    'user_groups:update', 'user_groups:update:own',
     'user_messages:create', 'user_messages:create:member', 'user_messages:create:own',
-    'user_messages:delete', 'user_messages:delete:member', 'user_messages:delete:own',
+    'user_messages:delete', 'user_messages:delete:own',
     'user_messages:read', 'user_messages:read:member', 'user_messages:read:own',
-    'user_messages:update', 'user_messages:update:member', 'user_messages:update:own',
+    'user_messages:update', 'user_messages:update:own',
     // users:update:own is what lets an account edit its own profile without
     // being able to touch anybody else's.
     'users:create', 'users:delete', 'users:read', 'users:update', 'users:update:own',
@@ -56,7 +56,11 @@ t.test('GET /api/permissions publishes the generated catalog', async (t) => {
   const groups = body.models.find((entry) => entry.model === 'user_groups');
   t.same(groups.scopes, ['any', 'member', 'own']);
   t.equal(groups.ownedBy, 'owner');
-  t.equal(groups.permissions.length, 12);
+  t.equal(
+    groups.permissions.length, 9,
+    'four unscoped, four own-scoped, and reading at member scope — being in a '
+    + 'group grants sight of it and nothing more'
+  );
 });
 
 t.test('GET /api/meta describes every registered model', async (t) => {

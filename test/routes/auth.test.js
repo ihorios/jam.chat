@@ -61,7 +61,7 @@ t.test('GET /api/auth/me reflects the session', async (t) => {
   t.equal(status, 200);
   t.equal(body.user.email, ADMIN.email);
   t.equal(body.user.name, 'System Admin');
-  t.equal(body.user.permissions.length, 41, 'permissions travel with the identity');
+  t.equal(body.user.permissions.length, 36, 'permissions travel with the identity');
 });
 
 t.test('a forged or corrupted cookie is refused', async (t) => {

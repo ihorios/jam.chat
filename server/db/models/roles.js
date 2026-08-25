@@ -67,8 +67,10 @@ const DEFAULT_ROLES = [
       'user_groups:delete:own',
       'user_messages:read:member',
       'user_messages:create:member',
-      // Correcting what you said, own-scoped on purpose: `update:member` would
-      // let anybody in a group rewrite anybody else's words in it.
+      // Correcting and withdrawing what you said. Own-scoped, and no longer
+      // only by choice: the model does not publish `update:member` or
+      // `delete:member` at all, because either would let anybody in a group
+      // rewrite or remove anybody else's words in it.
       'user_messages:update:own',
       'user_messages:delete:own',
       'files:create:own',

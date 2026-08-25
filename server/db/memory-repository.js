@@ -421,7 +421,7 @@ export function createMemoryRepository(model, getRepo) {
       // Hydrated, not bare: afterDelete gets the row as it was, relations and
       // all, which is the only moment a model can still see what it carried.
       const existing = await repository.findById(numericId);
-      model.beforeDelete(existing);
+      await model.beforeDelete(existing);
 
       rows.splice(index, 1);
       for (const relationLinks of links.values()) relationLinks.delete(numericId);

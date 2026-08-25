@@ -1,3 +1,4 @@
+import { parsePermission } from './catalog.js';
 import { Model } from './model.js';
 
 /**
@@ -61,6 +62,43 @@ class UserGroups extends Model {
           },
         },
       },
+    });
+  }
+
+  /**
+   * Membership grants reading, and nothing else.
+   *
+   * `membership: { relation: 'members' }` makes `:member` answerable, and the
+   * base class would generate it for all four actions. Only one of the four is
+   * meaningful, and the other three range from pointless to dangerous:
+   *
+   *   read     the groups you are in. This is the whole messenger, and the
+   *            `user` role is built on it.
+   *
+   *   create   meaningless. A row that does not exist yet has nobody in it, so
+   *            there is no membership to check — crud.js skips the check, and
+   *            withOwnership pins the owner either way, which makes this an
+   *            exact synonym for `create:own`.
+   *
+   *   update   an ownership hijack. A scoped write has its owner *imposed*
+   *            (withOwnership), so a member PUTting a group they are in — with
+   *            an empty body, even — becomes its owner. Every other field is
+   *            privileged, so taking the group is the only thing this
+   *            permission can actually do.
+   *
+   *   delete   contradicts the one rule leaving is built on: a group is not
+   *            destroyed by the people in it, only by its owner. See the leave
+   *            route in routes/messenger.js, which hands ownership to somebody
+   *            still inside precisely so that rule can hold.
+   *
+   * So they are not published. A permission that exists is a checkbox on the
+   * roles screen, and a checkbox is an invitation — this one to hand somebody
+   * else's conversation to whoever wandered into it.
+   */
+  permissions() {
+    return super.permissions().filter((permission) => {
+      const { action, scope } = parsePermission(permission);
+      return !(scope === 'member' && action !== 'read');
     });
   }
 

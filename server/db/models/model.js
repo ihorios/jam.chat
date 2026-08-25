@@ -508,8 +508,18 @@ ${payload}  PRIMARY KEY (${relation.localKey}, ${relation.targetKey})
     return row;
   }
 
-  /** Vetoes a delete by throwing (e.g. protecting system rows). */
-  beforeDelete(_row) {}
+  /**
+   * Vetoes a delete by throwing, before anything has happened.
+   *
+   * Awaited, so a model may do work here that has to succeed for the delete to
+   * be allowed to proceed — the files model deletes the bytes from here rather
+   * than from afterDelete, because a row removed before its object leaves
+   * nothing behind that knows the object exists (see db/models/files.js).
+   *
+   * Throwing leaves the row exactly as it was, which is the whole point: the
+   * caller gets an error for something that did not happen.
+   */
+  async beforeDelete(_row) {}
 
   /**
    * Tidies up after a row that has just been removed — the counterpart to
@@ -518,8 +528,10 @@ ${payload}  PRIMARY KEY (${relation.localKey}, ${relation.targetKey})
    * Called with the row as it was — hydrated, so its relations are still
    * visible even though the link rows have just cascaded away — once the
    * delete has succeeded, by every driver. It is where a model reaches beyond
-   * its own table on the way out: a file model deletes the object its row
-   * pointed at, a message takes its attachments with it.
+   * its own table on the way out: a message takes its attachments with it.
+   *
+   * For work that must succeed *for* the delete rather than after it, use
+   * beforeDelete: this hook runs too late to refuse anything.
    *
    * `context.getRepo(name)` reaches the other repositories, since a model has
    * no registry of its own. Throwing here fails a delete that has already

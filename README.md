@@ -59,11 +59,11 @@ leave whenever you like. Leaving never destroys a group somebody is still in; th
 owner walking out hands it to a remaining member, and the last member left can
 delete it deliberately. Departures are announced in the conversation itself.
 
-**Messages** carry replies, edits, emoji and up to three attachments each. You
-may edit and delete your own and nobody else's — an administrator who may touch
-anybody's does it from the dashboard, deliberately, rather than from a button
-beside a conversation. Attachments are read through the server, never from the
-bucket directly, so leaving a group ends access to what was said in it.
+**Messages** carry replies, edits, emoji and up to three attachments each. Edit
+and delete appear where the permission reaches: on your own words with an
+own-scoped grant, on anybody's with an unscoped one, and nowhere without. Attachments are
+read through the server, never from the bucket directly, so leaving a group ends
+access to what was said in it.
 
 **A conversation loads when you open it.** The sidebar draws itself from the
 unread frame alone — a count and a last line per group — so visiting the
@@ -108,6 +108,12 @@ today, and it lives on `user_group_users` beside the membership it describes.
 ### Permissions have scope
 
 A permission is `<model>:<action>` optionally narrowed to `:own` or `:member`.
+
+A scope exists only where the model can answer it — and only where it should be
+grantable. Membership grants sight of a conversation and very little else: a
+group publishes `:member` for reading alone, a message for reading and writing.
+Editing or deleting other people's words, or the group around them, is `:own` or
+nothing.
 
 | | means |
 | :--- | :--- |

@@ -340,6 +340,35 @@ async function realtimePlugin(fastify) {
     });
     sockets.set(connectionId, { socket, userId: user?.id ?? null });
 
+    /*
+     * Registered before anything that can fail, and that ordering is the whole
+     * point of it being here rather than further down.
+     *
+     * A handshake reads the database — the unread counts on the hello frame —
+     * so it can throw. Attached after that read, this listener would not exist
+     * yet when it did: the connection would be recorded in the store and in
+     * `sockets`, the socket would close with nobody watching, and presence
+     * would go on counting somebody who left. Every failed handshake leaked one
+     * more, permanently.
+     *
+     * Same boundary as the frame handler, and it matters more: this runs while
+     * a socket is already going away, so there is nobody left to tell and
+     * nothing to retry. Losing the server over it would lose every other socket
+     * with it.
+     */
+    socket.on('close', () => {
+      // Deleted first, and outside the async work, so the frames the departure
+      // generates are not sent to the socket that has just gone — and so it is
+      // forgotten even if the rest fails.
+      sockets.delete(connectionId);
+
+      (async () => {
+        await calls.disconnect(connectionId);
+        await store.disconnect(connectionId);
+        await store.publish({ model: 'presence', type: 'disconnected' });
+      })().catch((err) => fastify.log.error({ err, connectionId }, 'Socket teardown failed'));
+    });
+
     send(socket, {
       type: 'hello',
       connectionId,
@@ -351,7 +380,27 @@ async function realtimePlugin(fastify) {
     // first presence frame it receives.
     await store.publish({ model: 'presence', type: 'connected' });
 
-    socket.on('message', async (raw) => {
+    /*
+     * Every inbound frame, inside a boundary.
+     *
+     * A listener passed an async function is a promise nobody is holding: throw
+     * inside one and it is an unhandled rejection, which Node answers by killing
+     * the process. So a database that blinked while somebody's tab said `read`
+     * took the whole server down — every other socket with it — for a request
+     * that could simply have been refused.
+     *
+     * What is thrown here is almost always somebody else's outage rather than a
+     * bug: a pool timeout, a bucket, a peer that vanished mid-signal. The socket
+     * is told, and stays open, because the next frame will very likely work.
+     */
+    socket.on('message', (raw) => {
+      handleFrame(raw).catch((err) => {
+        fastify.log.error({ err, connectionId }, 'A socket frame could not be handled');
+        send(socket, { type: 'error', error: 'That could not be handled. Try again.' });
+      });
+    });
+
+    async function handleFrame(raw) {
       let payload;
       try {
         payload = JSON.parse(String(raw));
@@ -396,16 +445,8 @@ async function realtimePlugin(fastify) {
       }
 
       send(socket, { type: 'error', error: `Unknown message type "${payload.type}"` });
-    });
+    }
 
-    socket.on('close', async () => {
-      // Deleted first, so the frames the departure generates are not sent to
-      // the socket that has just gone.
-      sockets.delete(connectionId);
-      await calls.disconnect(connectionId);
-      await store.disconnect(connectionId);
-      await store.publish({ model: 'presence', type: 'disconnected' });
-    });
   });
 
   fastify.addHook('onClose', async () => {

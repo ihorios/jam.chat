@@ -234,34 +234,52 @@ export function extensionOf(filename) {
 }
 
 /**
- * Deletes the bytes behind a file row, if anyone can.
+ * Deletes the bytes behind a file row, and **throws if it cannot**.
  *
- * Never throws: by the time this runs the row is already gone, and a bucket
- * that cannot be reached must not turn a successful delete into a failed
- * request. What it must do is leave a line in the log, because the difference
- * between "deleted" and "leaked" is only ever visible there.
+ * The order matters and this is the half that enforces it. A file row is the
+ * only record that its object exists — `provider_name` and `provider_id` are
+ * not derivable from anything else — so deleting the row first and the object
+ * afterwards means a failed delete orphans the bytes permanently: nothing is
+ * left to retry from, and the sweep only ever looks at rows that still exist.
+ *
+ * So the object goes first, from beforeDelete, and a failure here refuses the
+ * delete rather than reporting one that half happened. The row stays, still
+ * pointing at its object, and whoever asked can try again.
+ *
+ * It used to swallow everything and log, back when it ran after the row was
+ * gone and there was nothing useful left to do about a failure. That was the
+ * bug: uploads went on existing in the bucket, billed and unreferenced, and the
+ * only sign was a line in a log.
  */
-export async function forgetObject(row, logger = log) {
+export async function removeObject(row) {
   if (!row?.provider_id) return false;
 
+  const store = providerFor(row.provider_name);
+  if (!store) {
+    const error = new Error(
+      `This server cannot reach the storage "${row.provider_name}" that holds `
+      + `"${row.name || row.provider_id}", so it cannot be deleted.`
+    );
+    error.statusCode = 503;
+    // Written for whoever pressed the button; see plugins/error-handler.js.
+    error.expose = true;
+    throw error;
+  }
+
   try {
-    // Deleted by whichever provider wrote it, not by whichever is in use — a
-    // file uploaded before storage was reconfigured must still go when its row
-    // does, or "delete" quietly means "forget about".
-    const store = providerFor(row.provider_name);
-
-    if (!store) {
-      logger?.warn(
-        { file: row.id, storedIn: row.provider_name, object: row.provider_id },
-        'Cannot delete object: its storage is not configured here'
-      );
-      return false;
-    }
-
     await store.remove(row.provider_id);
     return true;
   } catch (err) {
-    logger?.error({ err, file: row.id, object: row.provider_id }, 'Failed to delete object');
-    return false;
+    log?.error?.(
+      { err, file: row.id, object: row.provider_id },
+      'Refusing to delete a file row whose object could not be removed'
+    );
+    const error = new Error(
+      `The stored copy of "${row.name || row.provider_id}" could not be deleted, `
+      + 'so the file has been left alone. Try again.'
+    );
+    error.statusCode = 503;
+    error.expose = true;
+    throw error;
   }
 }

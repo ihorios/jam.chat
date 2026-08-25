@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { api, uploadFiles } from '../lib/api';
 import { emojiOnly, formatDateTime, userLabel } from '../lib/format';
 import { saveMessageEdit, discardUploads, isEdited } from '../lib/messages';
-import { scopeOf } from '../lib/permissions';
+import { scopeReaches } from '../lib/permissions';
 import Avatar from '../components/Avatar';
 import Icon from '../components/Icon';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -40,7 +40,7 @@ function timeOnly(value) {
  */
 export default function MessengerPage() {
   const { t } = useTranslation();
-  const { can, user: currentUser } = useAuth();
+  const { can, scope, user: currentUser } = useAuth();
   const { unread, subscribe, markRead, status } = useRealtime();
   const { startCall, call } = useCall();
 
@@ -106,8 +106,20 @@ export default function MessengerPage() {
   const canReadUsers = can('users:read');
   const canWrite = can('user_messages:create');
   const canAttach = can('files:create');
-  const canEdit = can('user_messages:update');
-  const canDelete = can('user_messages:delete');
+  /*
+   * What may be done to a message, and to which messages.
+   *
+   * Held as scopes rather than booleans because the two questions are not
+   * separable: `can()` answers whether a permission is held at *any* scope, so
+   * it is true of the `:own` form every ordinary account carries — and a
+   * control drawn from that alone appears on messages the server will refuse.
+   *
+   * `any` reaches every message; `own` reaches what the reader wrote, wherever
+   * they happen to be looking at it. There is nothing in between — see the
+   * permissions() override on the user_messages model for why.
+   */
+  const editScope = scope('user_messages:update');
+  const deleteScope = scope('user_messages:delete');
 
   /*
    * `?scope=member` on both reads, and it is the whole of what makes this page
@@ -379,10 +391,16 @@ export default function MessengerPage() {
    * actually succeed: an own-scoped account sees it on the group it owns, and
    * an administrator holding the unscoped permission sees it anywhere.
    */
-  const deleteScope = scopeOf(currentUser?.permissions, 'user_groups:delete');
-  const ownsThisGroup = Number(selectedGroup?.owner) === Number(currentUser?.id);
-  const canDeleteGroup = selectedGroup !== null
-    && (deleteScope === 'any' || (deleteScope === 'own' && ownsThisGroup));
+  /*
+   * Ending it is the owner's decision. Ownership is the only question, because
+   * user_groups publishes `:member` for reading alone — being in a group has
+   * never been grounds for destroying it, and there is now no permission that
+   * says otherwise.
+   */
+  const canDeleteGroup = selectedGroup !== null && scopeReaches(
+    scope('user_groups:delete'),
+    { own: Number(selectedGroup?.owner) === Number(currentUser?.id) }
+  );
 
   const openGroup = (group) => {
     setSelectedId(group.id);
@@ -922,6 +940,22 @@ export default function MessengerPage() {
                   }
 
                   const mine = message.owner === currentUser?.id;
+                  /*
+                   * What this message is, to whoever is reading it.
+                   *
+                   * Authorship, and nothing else, because nothing else can
+                   * decide these two: user_messages publishes `:member` for
+                   * reading and creating only, so editing and deleting are
+                   * grantable at `any` or `own` and at no scope in between.
+                   *
+                   * Membership is deliberately not asserted here. A role edited
+                   * before that narrowing may still carry a stale
+                   * `update:member` row, which the client would read as a
+                   * granted scope and the server refuses outright — claiming
+                   * membership would draw a button for it, which is the exact
+                   * bug this guard exists to prevent.
+                   */
+                  const reach = { own: mine };
                   const author = usersById.get(message.owner);
                   const parent = message.reply_to != null
                     ? messagesById.get(message.reply_to)
@@ -990,27 +1024,24 @@ export default function MessengerPage() {
                               {t('messenger.reply')}
                             </button>
                           )}
-                          {/* Your own words only, both of them.
+                          {/* Offered where the permission actually reaches.
 
-                              `can()` answers whether a permission is held at
-                              any scope, so it is true for the
-                              `user_messages:delete:own` every ordinary account
-                              carries. Drawn from that alone, Delete appeared on
-                              everybody's messages and the server refused it on
-                              anybody else's — an offer that could not be taken
-                              up, which is worse than no offer.
+                              `user_messages:update` unscoped shows Edit on
+                              anybody's; `:member` on anything said in a group
+                              the reader is in; `:own` on their own words only;
+                              nothing at all without one.
 
-                              An administrator who may rewrite or remove
-                              anybody's does it from the dashboard, where the
-                              change is deliberate rather than a button beside a
-                              conversation. Same reason this screen reads as a
-                              member however much its reader may do. */}
-                          {mine && canEdit && (
+                              Drawn from `can()` alone, Delete appeared on every
+                              message — `can()` is true for the `:own` form every
+                              ordinary account carries — and the server answered
+                              404 on anybody else's. A control that cannot do
+                              what it says is worse than no control. */}
+                          {scopeReaches(editScope, reach) && (
                             <button type="button" onClick={() => startEdit(message)}>
                               {t('common.edit')}
                             </button>
                           )}
-                          {mine && canDelete && (
+                          {scopeReaches(deleteScope, reach) && (
                             <button type="button" onClick={() => askToDeleteMessage(message)}>
                               {t('common.delete')}
                             </button>

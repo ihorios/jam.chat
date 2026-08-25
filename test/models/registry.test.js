@@ -57,17 +57,33 @@ t.test('the permission catalog is the union of what the models declare', async (
   // Most models take the default: one permission per declared action, at each
   // scope they can answer for. A model declaring no actions therefore
   // contributes nothing at all.
+  const OVERRIDES = ['files', 'users', 'user_groups', 'user_messages'];
+
   const expectedCount = modelList.reduce((total, model) => {
-    // files and users both override permissions() rather than take the
-    // default, so their counts are read from what they actually declare.
-    if (model.name === 'files' || model.name === 'users') {
-      return total + model.permissions().length;
-    }
+    // These four declare their own set rather than take the default — files
+    // adds a create it has no route for, users adds one own-scoped update, and
+    // the two messenger models withhold `:member` from the actions where it
+    // would mean "anybody in a group may do this to anybody else's". Their
+    // counts are read from what they actually declare.
+    if (OVERRIDES.includes(model.name)) return total + model.permissions().length;
+
     const scopes = 1 + (model.membership ? 1 : 0) + (model.ownedBy ? 1 : 0);
     return total + scopes * model.actions.length;
   }, 0);
   t.equal(allPermissions().length, expectedCount);
   t.equal(CRUD_ACTIONS.length, 4);
+
+  // Membership decides who may read and write in a conversation, and
+  // deliberately not who may rewrite or remove what other people said there.
+  const messages = getModel('user_messages');
+  t.same(messages.scopesFor('read'), ['any', 'member', 'own'], 'reading follows membership');
+  t.same(messages.scopesFor('create'), ['any', 'member', 'own'], 'so does writing');
+  t.same(messages.scopesFor('update'), ['any', 'own'], 'editing does not');
+  t.same(messages.scopesFor('delete'), ['any', 'own'], 'nor does deleting');
+  t.notOk(
+    messages.permissions().some((p) => /:(update|delete):member$/.test(p)),
+    'so there is no checkbox on the roles screen offering it'
+  );
 
   // files is the exception, and the reason permissions() is overridable: it
   // grants uploading without exposing a JSON create route to grant it through.
@@ -182,11 +198,17 @@ t.test('the catalog is grouped for the admin UI', async (t) => {
     ['any', 'member', 'own'],
     'three rows: every group, the ones you are in, the ones you own'
   );
+  t.same(
+    getModel('user_groups').scopesFor('delete'), ['any', 'own'],
+    'though only reading is offered at member scope, so that row is one checkbox'
+  );
   t.equal(groups.ownedBy, 'owner');
   t.same(groups.permissions, [
     'user_groups:create', 'user_groups:read', 'user_groups:update', 'user_groups:delete',
-    'user_groups:create:member', 'user_groups:read:member',
-    'user_groups:update:member', 'user_groups:delete:member',
+    // Membership grants reading and nothing else: an `update:member` would
+    // hand the group to whoever pressed it, since a scoped write has its owner
+    // imposed, and a `delete:member` would let anybody in a conversation end it.
+    'user_groups:read:member',
     'user_groups:create:own', 'user_groups:read:own',
     'user_groups:update:own', 'user_groups:delete:own',
   ]);

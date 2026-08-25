@@ -120,6 +120,83 @@ async function syncColumns(model, present, log) {
 }
 
 /**
+ * Every foreign key in the schema, as `table.column -> { name, rule }`.
+ *
+ * One query, for the same reason columnsByTable is one: boot cost here is round
+ * trips rather than rows.
+ */
+async function foreignKeysByColumn() {
+  const res = await query(
+    `SELECT tc.table_name, kcu.column_name, tc.constraint_name, rc.delete_rule
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON kcu.constraint_name = tc.constraint_name
+        AND kcu.constraint_schema = tc.constraint_schema
+       JOIN information_schema.referential_constraints rc
+         ON rc.constraint_name = tc.constraint_name
+        AND rc.constraint_schema = tc.constraint_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = current_schema()`
+  );
+
+  return new Map(res.rows.map((row) => [
+    `${row.table_name}.${row.column_name}`,
+    { name: row.constraint_name, rule: row.delete_rule },
+  ]));
+}
+
+/** The columns that currently accept null, as `table.column`. */
+async function nullableColumns() {
+  const res = await query(
+    `SELECT table_name, column_name FROM information_schema.columns
+      WHERE table_schema = current_schema() AND is_nullable = 'YES'`
+  );
+  return new Set(res.rows.map((row) => `${row.table_name}.${row.column_name}`));
+}
+
+/**
+ * Brings an existing foreign key into line with what its model now declares.
+ *
+ * `ON DELETE` is not a detail: it decides what a delete takes with it, and the
+ * database enforces it without any model hook running. `files.owner_id` said
+ * CASCADE, which meant deleting an account destroyed every file it had ever
+ * uploaded — rows removed by Postgres itself, so nothing ran to remove the
+ * objects behind them, and the bucket kept them forever. It says SET NULL now,
+ * and this is what carries that to a database created before it did.
+ *
+ * Postgres cannot alter a constraint's action in place, so it is dropped and
+ * re-added under the same name. Only ever on a real difference: a schema
+ * already matching its models does nothing here.
+ *
+ * NOT NULL is only ever *relaxed*, never applied. Tightening could fail against
+ * rows that are already there — the same reason syncColumns adds new columns
+ * nullable whatever the model says.
+ */
+async function syncReferenceRules(model, foreignKeys, nullable, log) {
+  for (const field of Object.values(model.fields)) {
+    if (field.type !== 'reference') continue;
+
+    const at = `${model.table}.${field.column}`;
+
+    if (!field.required && !nullable.has(at)) {
+      await query(`ALTER TABLE ${model.table} ALTER COLUMN ${field.column} DROP NOT NULL`);
+      log.info(`${at} is no longer required; dropped its NOT NULL.`);
+    }
+
+    const existing = foreignKeys.get(at);
+    if (!existing || existing.rule === field.onDelete) continue;
+
+    await query(`ALTER TABLE ${model.table} DROP CONSTRAINT ${existing.name}`);
+    await query(
+      `ALTER TABLE ${model.table} ADD CONSTRAINT ${existing.name}
+         FOREIGN KEY (${field.column}) REFERENCES ${model.targetTable(field.target)}(id)
+         ON DELETE ${field.onDelete}`
+    );
+    log.info(`${at} is now ON DELETE ${field.onDelete} (was ${existing.rule}).`);
+  }
+}
+
+/**
  * Adds a payload column declared on a relation but missing from a link table
  * that already exists.
  *
@@ -252,6 +329,8 @@ export async function syncSchema(log) {
   // budget on a database that is not local — see columnsByTable.
   const columns = await columnsByTable();
   const indexes = await existingIndexes();
+  const foreignKeys = await foreignKeysByColumn();
+  const nullable = await nullableColumns();
 
   // Pass two: reconcile what the tables hold against what the models declare.
   for (const model of modelList) {
@@ -259,6 +338,7 @@ export async function syncSchema(log) {
     // model definition later are reconciled here instead.
     await syncColumns(model, columns.get(model.table) ?? new Set(), log);
     await syncRelationColumns(model, columns, log);
+    await syncReferenceRules(model, foreignKeys, nullable, log);
     await migratePermissionScope(model, columns, log);
 
     // Last for this model, so a column syncColumns has only just added is there

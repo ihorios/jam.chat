@@ -515,7 +515,7 @@ export function createPgRepository(model, getRepo) {
       // all, which is the only moment a model can still see what it carried.
       const existing = await repository.findById(numericId);
       if (!existing) return false;
-      model.beforeDelete(existing);
+      await model.beforeDelete(existing);
 
       // Side-table rows disappear via ON DELETE CASCADE.
       const res = await query(`DELETE FROM ${model.table} WHERE id = $1`, [numericId]);

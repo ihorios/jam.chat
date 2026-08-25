@@ -12,7 +12,7 @@ t.test('GET /api/roles returns the seeded roles', async (t) => {
 
   const admin = body.roles.find((role) => role.name === 'admin');
   t.equal(admin.is_system, true, 'admin is protected');
-  t.equal(admin.permissions.length, 41, 'and holds the full catalog');
+  t.equal(admin.permissions.length, 36, 'and holds the full catalog');
   t.ok(
     admin.permissions.includes('user_groups:read'),
     'unscoped, so an administrator sees every group and not only their own'

@@ -388,3 +388,68 @@ t.test('files need a session, like everything else', async (t) => {
   t.equal(forbidden, 403);
   t.match(body.error, /files:read/);
 });
+
+/*
+ * The bytes go before the row, and the row only if they went.
+ *
+ * The other order lost objects permanently: a file row is the only record that
+ * its object exists, so deleting the row first and failing to delete the object
+ * left bytes in the bucket that nothing knew about and nothing would retry —
+ * the sweep only ever looks at rows that are still there.
+ */
+t.test('a file whose object cannot be removed is not deleted', async (t) => {
+  const { app, cookies } = await asAdmin(t);
+  const { fileProvider } = await import('../../server/files/index.js');
+
+  const [, uploaded] = await send(app, cookies, { name: 'kept.txt', body: 'bytes' });
+  const file = uploaded.files[0];
+
+  const provider = fileProvider();
+  const remove = provider.remove.bind(provider);
+  provider.remove = async () => { throw new Error('AccessDenied'); };
+  t.teardown(() => { provider.remove = remove; });
+
+  const [refused, body] = await call(app, 'DELETE', `/api/files/${file.id}`, undefined, cookies);
+  t.equal(refused, 503, 'the delete is refused rather than half done');
+  t.match(body.error, /left alone/, 'and says so in words somebody can act on');
+
+  const [found] = await call(app, 'GET', `/api/files/${file.id}`, undefined, cookies);
+  t.equal(found, 200, 'the row is still there, still pointing at its object');
+
+  provider.remove = remove;
+  const [second] = await call(app, 'DELETE', `/api/files/${file.id}`, undefined, cookies);
+  t.equal(second, 200, 'and the retry succeeds once the storage will take it');
+  const [gone] = await call(app, 'GET', `/api/files/${file.id}`, undefined, cookies);
+  t.equal(gone, 404, 'leaving nothing behind');
+});
+
+/*
+ * An account being deleted is not its uploads being destroyed. It used to be:
+ * files.owner_id cascaded, Postgres performed the cascade itself, and no model
+ * hook ran — so every object those rows pointed at stayed in the bucket with
+ * nothing left that knew it was there.
+ */
+t.test('deleting an uploader leaves their files, ownerless', async (t) => {
+  const { app, cookies } = await asAdmin(t);
+
+  const [, made] = await call(app, 'POST', '/api/users', {
+    email: 'leaver@example.com', first_name: 'Leav', last_name: 'Er', password: 'Passw0rd!x',
+  }, cookies);
+  const uploader = made.user;
+
+  const [, uploaded] = await send(app, cookies, { name: 'theirs.txt', body: 'bytes' });
+  const file = uploaded.files[0];
+  await call(app, 'PUT', `/api/files/${file.id}`, { owner: uploader.id }, cookies);
+
+  const [removed] = await call(app, 'DELETE', `/api/users/${uploader.id}`, undefined, cookies);
+  t.equal(removed, 200);
+
+  const [found, body] = await call(app, 'GET', `/api/files/${file.id}`, undefined, cookies);
+  t.equal(found, 200, 'the file outlives the account that uploaded it');
+  t.equal(body.file.owner, null, 'owned by nobody rather than gone');
+
+  // inject directly: the body is bytes, and `call` parses JSON.
+  const content = await app.inject({ method: 'GET', url: `/api/files/${file.id}/content`, cookies });
+  t.equal(content.statusCode, 200, 'and its object is still there to be read');
+  t.equal(content.body, 'bytes', 'unchanged');
+});

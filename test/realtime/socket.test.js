@@ -362,3 +362,84 @@ t.test('a socket that says nonsense is told so, not dropped', async (t) => {
 
   await socket.close();
 });
+
+/*
+ * A backing service failing must not take the server with it.
+ *
+ * A listener handed an async function is a promise nobody is holding: throw
+ * inside one and it is an unhandled rejection, which Node answers by killing
+ * the process. So a database that blinked while somebody's tab said `read`
+ * brought down every other socket in the installation, for a frame that could
+ * simply have been refused.
+ *
+ * Asserted by watching for the rejection rather than by watching the server
+ * die, since a test that actually crashed the process could not report it.
+ */
+async function whileTheDatabaseIsGone(t, run) {
+  const rejections = [];
+  const watch = (err) => rejections.push(err);
+  process.on('unhandledRejection', watch);
+  t.teardown(() => process.off('unhandledRejection', watch));
+
+  await run();
+  // Long enough for a rejection to have surfaced if one was going to.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  return rejections;
+}
+
+/** Makes one repository method fail the way a pool timeout does. */
+function breaks(t, app, model, method) {
+  const real = app.models[model][method].bind(app.models[model]);
+  app.models[model][method] = async () => {
+    throw new Error('Connection terminated due to connection timeout');
+  };
+  t.teardown(() => { app.models[model][method] = real; });
+  return () => { app.models[model][method] = real; };
+}
+
+t.test('a frame that cannot be handled is refused, not fatal', async (t) => {
+  const app = await listening(t);
+  const socket = await connect(app, await login(app));
+  await socket.waitFor('hello');
+
+  const mend = breaks(t, app, 'users', 'findById');
+
+  const rejections = await whileTheDatabaseIsGone(t, async () => {
+    socket.socket.send(JSON.stringify({ type: 'read', group: 1 }));
+  });
+
+  t.same(rejections, [], 'nothing is left unhandled, so the process lives');
+  const refused = await socket.waitFor('error', 'a refusal');
+  t.match(refused.error, /try again/i, 'and the tab is told, in words it can act on');
+  t.equal(socket.socket.readyState, 1, 'with the socket still open for the next one');
+
+  mend();
+  await socket.close();
+});
+
+t.test('a handshake that fails leaves nothing behind', async (t) => {
+  const app = await listening(t);
+  t.equal((await app.realtime.connections()).length, 0, 'nothing connected yet');
+
+  // The unread counts on the hello frame are a read, so a handshake can throw.
+  const mend = breaks(t, app, 'user_groups', 'readLinks');
+
+  let socket;
+  const rejections = await whileTheDatabaseIsGone(t, async () => {
+    socket = await connect(app, await login(app)).catch(() => null);
+  });
+
+  t.same(rejections, [], 'the failure is handled rather than fatal');
+  mend();
+
+  await eventually(
+    async () => (await app.realtime.connections()).length === 0,
+    'the connection is forgotten'
+  );
+  t.equal(
+    (await app.realtime.connections()).length, 0,
+    'presence does not go on counting somebody who never got in'
+  );
+
+  if (socket) await socket.close().catch(() => {});
+});

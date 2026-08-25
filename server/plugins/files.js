@@ -84,14 +84,32 @@ async function filesPlugin(fastify) {
     ]);
 
     let collected = 0;
+    let left = 0;
     for (const file of files) {
       if (attached.has(file.id)) continue;
       if (Date.parse(file.created_at) > cutoff) continue;
 
-      if (await fastify.models.files.remove(file.id)) collected += 1;
+      /*
+       * One at a time, because deleting a file now refuses when its object
+       * cannot be removed. A bucket that is refusing one key — or refusing
+       * everything — must not stop the sweep at the first of them: the rest are
+       * still collectable, and the ones that are not are still here to be tried
+       * again in fifteen minutes. That retry is the whole reason the row is
+       * kept rather than deleted regardless.
+       */
+      try {
+        if (await fastify.models.files.remove(file.id)) collected += 1;
+      } catch (err) {
+        left += 1;
+        fastify.log.warn(
+          { err, file: file.id },
+          'Left an unattached file in place; its object could not be removed'
+        );
+      }
     }
 
     if (collected > 0) fastify.log.info({ collected }, 'Swept unattached files');
+    if (left > 0) fastify.log.warn({ left }, 'Unattached files the sweep could not remove');
     return collected;
   };
 

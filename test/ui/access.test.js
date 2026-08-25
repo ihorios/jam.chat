@@ -4,7 +4,7 @@ import path from 'node:path';
 import t from 'tap';
 
 import { buildTestApp } from '../helper.js';
-import { hasAdministrativePermission } from '../../src/lib/permissions.js';
+import { hasAdministrativePermission, scopeReaches } from '../../src/lib/permissions.js';
 
 /**
  * Which accounts the dashboard is for.
@@ -76,21 +76,38 @@ t.test('what counts as administrative', async (t) => {
 /**
  * Buttons that could never be pressed.
  *
- * `can()` answers whether a permission is held at *any* scope, so it is true of
- * the `user_messages:update:own` and `:delete:own` every ordinary account
- * carries — which makes it the wrong thing to draw a per-message button from on
- * its own. Delete was drawn from it alone and so appeared on everybody's
- * messages, where the server answered 404 because the row was not theirs.
+ * A control is drawn from two things: the scope somebody holds over an action,
+ * and whether that scope reaches the row in front of them. Drawn from the first
+ * alone it lies — `can()` is true for the `:own` form every ordinary account
+ * carries, so a Delete drawn from it appeared on everybody's messages while the
+ * server answered 404 on anybody else's.
  *
- * The server is not what this guards; it was always right, and
- * routes/membership.test.js says so. What it guards is the offer: a control
- * that cannot do what it says is worse than no control, and the mistake is one
- * character wide and invisible in review.
- *
- * Read out of the source because the suite has no way to render a component —
- * crude, and still the difference between catching this and not.
+ * The rule is a plain function so it can be checked directly; the second test
+ * is the crude half, reading the source to confirm the messenger actually uses
+ * it, since the suite cannot render a component.
  */
-t.test('the messenger offers edit and delete on your own messages only', async (t) => {
+t.test('a scope reaches only what it is granted over', async (t) => {
+  const message = { own: true, member: true };
+  const somebody_elses = { own: false, member: true };
+  const another_group = { own: false, member: false };
+
+  t.ok(scopeReaches('any', another_group), 'unscoped reaches anything, anywhere');
+  t.ok(scopeReaches('any', somebody_elses), 'including somebody else’s words');
+
+  t.ok(scopeReaches('member', somebody_elses), 'member reaches a group you are in');
+  t.notOk(scopeReaches('member', another_group), 'and nothing outside it');
+
+  t.ok(scopeReaches('own', message), 'own reaches your own words');
+  t.notOk(scopeReaches('own', somebody_elses), 'and not the person’s beside them');
+
+  t.notOk(scopeReaches(null, message), 'holding nothing reaches nothing');
+  t.notOk(scopeReaches(undefined, message), 'nor does holding an unknown scope');
+  // `any` means every row, so it has no question to ask about this one.
+  t.ok(scopeReaches('any'), 'unscoped needs to know nothing about a row to reach it');
+  t.notOk(scopeReaches('own'), 'while a scoped one, told nothing, reaches nothing');
+});
+
+t.test('the messenger draws its message controls from a scope', async (t) => {
   const source = fs.readFileSync(
     path.join(import.meta.dirname, '..', '..', 'src', 'pages', 'MessengerPage.jsx'),
     'utf8'
@@ -109,9 +126,9 @@ t.test('the messenger offers edit and delete on your own messages only', async (
     const guard = flat.slice(Math.max(0, at - 120), at);
     t.match(
       guard,
-      /mine &&/,
-      'and ' + action + ' is offered on your own messages only, '
-      + 'rather than wherever the permission happens to be held'
+      /scopeReaches\(/,
+      'and ' + action + ' is offered where the granted scope reaches this message, '
+      + 'rather than wherever the permission happens to be held at all'
     );
   }
 });

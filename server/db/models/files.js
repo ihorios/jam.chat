@@ -1,6 +1,6 @@
 import { permissionKey } from './catalog.js';
 import { Model } from './model.js';
-import { forgetObject } from '../../files/index.js';
+import { removeObject } from '../../files/index.js';
 
 /**
  * Something a user uploaded: a name to show, a size, and where the bytes went.
@@ -29,7 +29,30 @@ class Files extends Model {
       // generic JSON create route must not exist.
       actions: ['read', 'update', 'delete'],
       fields: {
-        owner: { type: 'reference', target: 'users', required: true, label: 'Owner' },
+        /*
+         * The uploader — and `SET NULL` rather than `CASCADE`, which is the
+         * difference between an account being deleted and its uploads being
+         * destroyed with it.
+         *
+         * Cascading was worse than it looked: Postgres performs a cascade
+         * itself, so the rows went without any model hook running, and every
+         * object those rows pointed at stayed in the bucket with nothing left
+         * that knew it was there. Deleting one account leaked everything it had
+         * ever uploaded.
+         *
+         * Nullable for the same reason, so it is optional here. An upload always
+         * sets it (routes/files.js) and there is no create route to omit it, so
+         * a null owner only ever means "the account that uploaded this is gone".
+         * Such a file belongs to nobody: `files:*:own` stops matching it, and
+         * whether it is still readable follows the message it is attached to,
+         * exactly as it did before.
+         */
+        owner: {
+          type: 'reference',
+          target: 'users',
+          onDelete: 'SET NULL',
+          label: 'Owner',
+        },
         name: { type: 'string', required: true, label: 'File Name' },
         mime_type: { type: 'string', label: 'Type' },
         provider_name: { type: 'string', required: true, immutable: true, label: 'Stored In' },
@@ -57,23 +80,34 @@ class Files extends Model {
   }
 
   /**
-   * The row is gone; the bytes should follow, however the row went — the admin
-   * screen, a message being edited, or a sweep. Doing it here rather than in
-   * one route is the only way to cover paths that do not exist yet.
+   * The bytes go first, and the row only if they did.
+   *
+   * From beforeDelete rather than afterDelete, because the row is the only
+   * record that its object exists: delete it first and a failed object delete
+   * leaves bytes in the bucket that nothing knows about and nothing will ever
+   * retry. Throwing here refuses the whole delete instead — the row stays, and
+   * so does the thing it points at.
+   *
+   * The residual risk is the other way round, and it is the lesser one: if the
+   * object goes and the row delete then fails, a row is left pointing at bytes
+   * that are not there. That reads as a 404 on one download, and the sweep
+   * collects the row once nothing references it.
+   */
+  async beforeDelete(row) {
+    await removeObject(row);
+  }
+
+  /**
+   * And nobody is left pointing at it. users.logo_file is a plain id rather
+   * than a foreign key — files already reference users, and a key back would be
+   * a cycle the schema cannot create — so ON DELETE SET NULL is this, written
+   * out by hand.
+   *
+   * Errors are swallowed on purpose: the row is already gone by now, and
+   * throwing would report a delete that happened as one that did not. A stale
+   * id costs a 404 on one picture, which falls back to the person's initials.
    */
   async afterDelete(row, context) {
-    await forgetObject(row);
-
-    /*
-     * And nobody is left pointing at it. users.logo_file is a plain id rather
-     * than a foreign key — files already reference users, and a key back would
-     * be a cycle the schema cannot create — so ON DELETE SET NULL is this,
-     * written out by hand.
-     *
-     * Errors are swallowed on purpose: the row is already gone, and throwing
-     * here would report a delete that happened as one that did not. A stale id
-     * costs a 404 on one picture, which falls back to the person's initials.
-     */
     try {
       const users = context?.getRepo?.('users');
       if (!users) return;

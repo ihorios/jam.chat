@@ -15,9 +15,10 @@
     "up": "vite build && node server/index.js"
   },
   "//": "vite and @vitejs/plugin-react are dependencies rather than devDependencies on purpose. The deploy builds with `npm install && npm run build` under NODE_ENV=production, and npm omits devDependencies when that is set — leaving the build with no Vite to run. Anything else needed to BUILD the client belongs here too; test and lint tooling does not.",
+  "//multipart": "Pinned exactly, not a range. In @fastify/multipart 10.1.1 an upload that exceeds the `files` limit surfaces as ERR_STREAM_PREMATURE_CLOSE instead of FST_FILES_LIMIT, so routes/files.js cannot recognise it and the request 500s instead of returning `At most N files per message`. test/routes/files-limits.test.js catches it. Unpin once that is fixed upstream.",
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
-    "@fastify/multipart": "^10.1.0",
+    "@fastify/multipart": "10.1.0",
     "@fastify/static": "^10.1.3",
     "@fastify/websocket": "^11.3.0",
     "@react-oauth/google": "^0.13.5",

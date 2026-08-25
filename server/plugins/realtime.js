@@ -17,8 +17,11 @@ import { grantedScope } from './auth.js';
  * connected, and the presence figures say so. Signing in identifies the socket
  * in place rather than replacing it.
  *
- * Delivery is decided by exactly the same permissions as a request: an event
- * reaches a socket only if its user could have fetched the row over HTTP. The
+ * Delivery is decided by the same permissions as a request, with one deliberate
+ * exception: a message follows *membership* rather than the read permission,
+ * because the socket serves the messenger and the messenger is somebody's own
+ * conversations (see inTheConversation). Everything else reaches a socket only
+ * if its user could have fetched the row over HTTP. The
  * fan-out reads the user fresh each time, so a role change or a group they
  * were dropped from takes effect on the next message rather than lingering for
  * as long as the tab stays open.
@@ -143,6 +146,36 @@ async function realtimePlugin(fastify) {
     return false;
   };
 
+  /**
+   * Whether to tell this user that something was said.
+   *
+   * Membership, and deliberately narrower than `maySee` — this is the one place
+   * the socket answers a different question from the route, so it is worth
+   * saying why. `user_messages:read` unscoped is an administrator's permission
+   * and the dashboard is what it is for; the dashboard fetches, and subscribes
+   * to nothing. The socket exists for the messenger, and the messenger is
+   * somebody's own conversations: /chats is not a moderation tool, and an
+   * administrator opening it should find the groups they are in rather than
+   * every conversation in the installation.
+   *
+   * Which is the rule the unread count has always used — see unreadFor, and its
+   * note that an administrator reading every group is not thereby behind on
+   * every conversation. Delivery simply never caught up with it, so an
+   * administrator's chats page filled with strangers the moment anybody spoke.
+   *
+   * A read permission is still required: membership is what narrows the
+   * audience, not what grants it.
+   */
+  const inTheConversation = async (user, model, row) => {
+    if (!grantedScope(model, 'read', user.permissions)) return false;
+
+    const via = model.membershipVia;
+    // A model that cannot say who belongs to it falls back to the route's rule.
+    if (!via) return maySee(user, model, row);
+
+    return fastify.models[via.target].isMemberOf(row[via.name], user.id);
+  };
+
   /** The user ids in a hydrated group row's members, as numbers. */
   const memberIds = (group) => (group?.members || []).map((member) => Number(member.id));
 
@@ -239,7 +272,7 @@ async function realtimePlugin(fastify) {
         // Read fresh: permissions and membership may have changed since the
         // socket opened, and a stale copy would leak a conversation.
         const user = await fastify.models.users.findById(entry.userId);
-        if (!user?.is_active || !(await maySee(user, model, event.row))) continue;
+        if (!user?.is_active || !(await inTheConversation(user, model, event.row))) continue;
 
         if (event.type === 'deleted') {
           send(entry.socket, {

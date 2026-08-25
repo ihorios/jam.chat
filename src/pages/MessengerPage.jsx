@@ -105,9 +105,22 @@ export default function MessengerPage() {
   const canAttach = can('files:create');
   const canEdit = can('user_messages:update');
 
+  /*
+   * `?scope=member` on both reads, and it is the whole of what makes this page
+   * somebody's own conversations.
+   *
+   * An administrator holds the unscoped permissions, so without it this screen
+   * answered with every group in the installation and everything ever said in
+   * one — a moderation view wearing a messenger's clothes, and nobody's actual
+   * chats. Reading past your own conversations is the dashboard's job, where it
+   * is what somebody went looking for.
+   *
+   * The server clamps rather than widens (routes/crud.js), so an account that
+   * only holds the member- or own-scoped permission is unaffected by asking.
+   */
   const loadMessages = useCallback(async () => {
     if (!canReadMessages) return;
-    const res = await api('/api/user_messages');
+    const res = await api('/api/user_messages?scope=member');
     setMessages(res.user_messages);
   }, [canReadMessages]);
 
@@ -117,7 +130,7 @@ export default function MessengerPage() {
     (async () => {
       try {
         const [groupsRes, usersRes] = await Promise.all([
-          canReadGroups ? api('/api/user_groups') : Promise.resolve({ user_groups: [] }),
+          canReadGroups ? api('/api/user_groups?scope=member') : Promise.resolve({ user_groups: [] }),
           canReadUsers ? api('/api/users') : Promise.resolve({ users: [] }),
         ]);
         if (cancelled) return;

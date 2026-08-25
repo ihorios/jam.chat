@@ -179,6 +179,40 @@ t.test('a message reaches the group over the socket, and nobody else', async (t)
   await outsiderSocket.close();
 });
 
+/*
+ * The socket carries the messenger, and the messenger is somebody's own
+ * conversations — so delivery follows membership rather than the read
+ * permission a route would use. It is the one place the two rules differ, and
+ * this is what holds them apart: an administrator holds `user_messages:read`
+ * unscoped, and used to be pushed every word said anywhere in the
+ * installation. The dashboard, which is where that permission belongs,
+ * subscribes to nothing.
+ */
+t.test('an administrator is not sent conversations they are not in', async (t) => {
+  const { app, adminCall, outsider, elsewhere } = await messenger(t);
+
+  const adminSocket = await connect(app, await login(app));
+  const outsiderSocket = await connect(app, outsider.cookies);
+  await Promise.all([adminSocket.waitFor('hello'), outsiderSocket.waitFor('hello')]);
+
+  await adminCall('POST', '/api/user_messages', {
+    owner: outsider.id, group: elsewhere.id, value: 'Between them and nobody else',
+  });
+
+  // The person actually in it is the control: once they have it, the frame has
+  // been fanned out and the admin's silence means something.
+  const theirs = await outsiderSocket.waitFor('message', 'the member gets it');
+  t.equal(theirs.message.value, 'Between them and nobody else');
+
+  t.notOk(
+    adminSocket.frames.some((frame) => frame.message?.value === 'Between them and nobody else'),
+    'reading every group is not being in one'
+  );
+
+  await adminSocket.close();
+  await outsiderSocket.close();
+});
+
 t.test('an edit reaches the people who read the mistake', async (t) => {
   const { app, adminCall, member, shared } = await messenger(t);
 

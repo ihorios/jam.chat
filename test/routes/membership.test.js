@@ -53,6 +53,58 @@ async function messengerFixture(t) {
   };
 }
 
+/*
+ * The chats page is somebody's own conversations, whoever they are.
+ *
+ * An administrator holds the unscoped permissions, which is what the dashboard
+ * is for. Without `?scope=`, /chats answered them with every group in the
+ * installation and everything ever said in one — a moderation view wearing a
+ * messenger's clothes. These lock the narrowing in, and lock in that it only
+ * ever narrows.
+ */
+t.test('a read can be narrowed to the caller’s own corner, but never widened', async (t) => {
+  const { adminCall, member, outsider, shared, elsewhere } = await messengerFixture(t);
+
+  await adminCall('POST', '/api/user_messages', {
+    owner: outsider.id, group: elsewhere.id, value: 'not the admin’s business',
+  });
+  await adminCall('POST', '/api/user_messages', {
+    owner: 1, group: shared.id, value: 'in a group the admin is in',
+  });
+
+  // The dashboard, which asks for nothing, is unchanged.
+  const [, all] = await adminCall('GET', '/api/user_messages');
+  t.equal(all.count, 2, 'unscoped, an administrator still sees every message');
+  const [, allGroups] = await adminCall('GET', '/api/user_groups');
+  t.equal(allGroups.count, 2, 'and every group');
+
+  // The messenger, which asks to be answered as a member.
+  const [status, mine] = await adminCall('GET', '/api/user_messages?scope=member');
+  t.equal(status, 200);
+  t.equal(mine.count, 1, 'narrowed, only the conversations they are in');
+  t.equal(mine.user_messages[0].value, 'in a group the admin is in');
+
+  const [, myGroups] = await adminCall('GET', '/api/user_groups?scope=member');
+  t.equal(myGroups.count, 1, 'and only the groups they are in');
+  t.equal(myGroups.user_groups[0].id, shared.id);
+  t.notOk(
+    myGroups.user_groups.some((group) => group.id === elsewhere.id),
+    'a group of strangers never reaches the chats page'
+  );
+
+  // Narrowing only. Asking for more than you hold gets you what you hold.
+  const [, widened] = await member.call('GET', '/api/user_messages?scope=any');
+  t.equal(widened.count, 1, 'a member asking for `any` is clamped back to their own');
+  t.notOk(
+    widened.user_messages.some((m) => m.value === 'not the admin’s business'),
+    'and cannot reach a conversation they are not in'
+  );
+
+  const [refused, error] = await member.call('GET', '/api/user_messages?scope=nonsense');
+  t.equal(refused, 400, 'a scope that does not exist is a mistake, not everything');
+  t.match(error.error, /not a scope/);
+});
+
 t.test('a member sees the groups they are in, and no others', async (t) => {
   const { adminCall, member, shared, elsewhere } = await messengerFixture(t);
 

@@ -1,3 +1,4 @@
+import { SCOPES } from '../db/models/catalog.js';
 import { singular } from '../db/models/fields.js';
 
 function notFound(label) {
@@ -32,12 +33,42 @@ export function crudRoutes(model) {
     const can = (action) => model.actions.includes(action) && model.scopesFor(action).length > 0;
     const guard = (action) => ({ preHandler: fastify.authorize(model, action) });
 
+    /**
+     * The scope a read is answered at.
+     *
+     * `authorize` has already worked out the broadest one the caller holds.
+     * `?scope=` lets them ask to be answered at a narrower one instead — which
+     * is what the messenger uses: /chats is somebody's own conversations, and
+     * an administrator opening it wants their own, not everybody's. The
+     * dashboard asks for nothing and so still sees the whole model.
+     *
+     * Narrowing only, and clamped rather than refused: a scope broader than the
+     * one granted falls back to the grant, so this can never become a way to
+     * read past a permission. An unknown one is a mistake in the caller and is
+     * said so, because answering it with everything would be the worst of both.
+     */
+    const readScope = (request) => {
+      const asked = request.query?.scope;
+      if (!asked || asked === request.scope) return request.scope;
+
+      if (!model.scopesFor('read').includes(asked)) {
+        const error = new Error(
+          `"${asked}" is not a scope ${model.name} can be read at.`
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // SCOPES is broadest first, so a later index is the narrower scope.
+      return SCOPES.indexOf(asked) > SCOPES.indexOf(request.scope) ? asked : request.scope;
+    };
+
     /** The row, or nothing at all if this request has no business with it. */
-    const findInScope = async (request) => {
+    const findInScope = async (request, scope = request.scope) => {
       const row = await repository.findById(request.params.id);
       if (!row) return null;
-      if (request.scope === 'own' && !model.ownedByUser(row, request.user.id)) return null;
-      if (request.scope === 'member' && !(await repository.isMemberOf(row.id, request.user.id))) {
+      if (scope === 'own' && !model.ownedByUser(row, request.user.id)) return null;
+      if (scope === 'member' && !(await repository.isMemberOf(row.id, request.user.id))) {
         return null;
       }
       return row;
@@ -142,16 +173,17 @@ export function crudRoutes(model) {
 
     if (can('read')) {
       fastify.get('/', guard('read'), async (request) => {
+        const scope = readScope(request);
         const rows = await repository.findAll({
           search: request.query.search,
-          ...(request.scope === 'own' ? { owner: request.user.id } : {}),
-          ...(request.scope === 'member' ? { member: request.user.id } : {}),
+          ...(scope === 'own' ? { owner: request.user.id } : {}),
+          ...(scope === 'member' ? { member: request.user.id } : {}),
         });
         return { ok: true, count: rows.length, [listKey]: rows };
       });
 
       fastify.get('/:id', guard('read'), async (request) => {
-        const row = await findInScope(request);
+        const row = await findInScope(request, readScope(request));
         if (!row) throw notFound(label);
         return { ok: true, [itemKey]: row };
       });

@@ -68,8 +68,8 @@ press rings every open tab of every member.
 
 **Live everything.** One WebSocket per tab carries new messages, edits,
 deletions, unread counts, presence and call signalling. Delivery is decided by
-exactly the same permissions a request would be — an event reaches a socket only
-if its user could have fetched the row over HTTP.
+the same permissions a request would be — except a message, which follows
+membership, so /chats is somebody's own conversations whatever their role.
 
 **Two languages**, English and Ukrainian, chosen from the browser and then from
 the account. Every string in the interface is a key; a test fails the build if
